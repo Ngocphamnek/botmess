@@ -579,7 +579,7 @@ class GroupBot:
             "tung", "random", "roll", "choose", "8ball", "rps", "trivia",
             "hangman", "noitu", "doanemoji", "speedquiz", "typing",
             "genanh", "anh", "meme", "avatar",
-            "nhac", "youtube", "videoinfo", "lyric",
+            "nhac", "youtube", "videoinfo", "lyric", "video",
             "userinfo", "search", "echo",
             # Free Fire — public
             "ff",
@@ -743,6 +743,7 @@ class GroupBot:
             # Âm nhạc & Video (member)
             "nhac":             self._cmd_nhac,
             "youtube":          self._cmd_youtube,
+            "video":            self._cmd_video,
             "videoinfo":        self._cmd_videoinfo,
             "lyric":            self._cmd_lyric,
             # Thêm/xóa thành viên (group admin)
@@ -1666,7 +1667,7 @@ class GroupBot:
         ("3️⃣",  "🎮 Vui chơi (DM+Nhóm)",   ["tung","random","roll","choose","8ball","trivia","rps","hangman","noitu","doanemoji","speedquiz","typing"]),
         ("🪙",  "📊 Hồ sơ & BXH (DM+Nhóm)", ["profile","toplevel","topcoin","daily"]),
         ("4️⃣",  "🌤 Tiện ích (DM+Nhóm)",   ["thoitiet","dich","tinhtoan","wiki","qr","base64","decode64","hash"]),
-        ("5️⃣",  "🖼 Ảnh & Nhạc (DM+Nhóm)", ["genanh","anh","meme","avatar","nhac","youtube","videoinfo","lyric"]),
+        ("5️⃣",  "🖼 Ảnh & Nhạc (DM+Nhóm)", ["genanh","anh","meme","avatar","nhac","video","youtube","videoinfo","lyric"]),
         ("6️⃣",  "🎮 Game (DM+Nhóm)",  ["ff", "lq"]),
         ("7️⃣",  "🛡 Group Admin (Nhóm)",   ["warn","clearwarn","ban","unban","banlist","tagall","announce","spam","themtv","xoatv","stats","rules"]),
         ("8️⃣",  "👑 Key Owner (Nhóm+DM)",  ["thongtinnhom","chunhom","chuyennhom","daten","setjoinmsg","addgroupadmin","removegroupadmin","setprefix","setrules","antilink","antispam"]),
@@ -4061,6 +4062,102 @@ class GroupBot:
                 ))
 
         threading.Thread(target=_download_and_send, daemon=True).start()
+
+    def _cmd_video(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, (
+                f"ℹ️ Cách dùng:\n"
+                f"  {self.prefix}video <tên phim/clip>  — tải + gửi MP4 vào chat\n"
+                f"  {self.prefix}video link <từ khoá>   — chỉ gửi link YouTube\n"
+                f"  ⚠️ Giới hạn: video dưới 50MB (~5 phút)"
+            ))
+            return
+
+        if arg.lower().startswith("link "):
+            self._youtube_search(snap, arg[5:].strip(), kind="video")
+            return
+
+        def _download_video():
+            import yt_dlp as _ytdlp, glob as _glob
+            thread_id = str(snap["replyToID"])
+            tmp_dir   = self._TMP_DIR
+            os.makedirs(tmp_dir, exist_ok=True)
+            self._reply(snap, f"🎬 Đang tải video: '{arg}'\n⏳ Vui lòng chờ 30–60 giây...")
+
+            safe_name = re.sub(r"[^\w\s-]", "", arg)[:40].strip().replace(" ", "_")
+            out_tpl   = os.path.join(tmp_dir, f"vid_{safe_name}_%(id)s.%(ext)s")
+
+            ydl_opts = {
+                "format":         "best[ext=mp4][filesize<50M]/best[ext=mp4]/best",
+                "outtmpl":        out_tpl,
+                "quiet":          True,
+                "noplaylist":     True,
+                "default_search": "ytsearch1",
+                "max_filesize":   50 * 1024 * 1024,
+                "ffmpeg_location": "/nix/store/k28ypnisbhajg3x1kv5hy7h2vjbajkvy-replit-runtime-path/bin",
+            }
+
+            try:
+                with _ytdlp.YoutubeDL(ydl_opts) as ydl:
+                    info    = ydl.extract_info(arg, download=True)
+                    title   = info.get("title", arg)
+                    channel = info.get("uploader", "")
+                    dur_sec = info.get("duration", 0)
+                    mins, secs = divmod(int(dur_sec), 60)
+                    vid_id  = info.get("id", "")
+                    yt_link = f"https://youtu.be/{vid_id}" if vid_id else ""
+            except Exception as e:
+                self._reply(snap, (
+                    f"❌ Tải video thất bại: {str(e)[:100]}\n"
+                    f"  Thử: {self.prefix}video link {arg}"
+                ))
+                return
+
+            pattern = os.path.join(tmp_dir, f"vid_{safe_name}_*.mp4")
+            files   = _glob.glob(pattern)
+            if not files:
+                files = sorted(
+                    _glob.glob(os.path.join(tmp_dir, "vid_*.mp4")),
+                    key=os.path.getmtime, reverse=True
+                )[:1]
+
+            if not files:
+                self._reply(snap, f"❌ Không tìm thấy file video. Thử lại sau!\n  🔗 {yt_link}")
+                return
+
+            mp4_path = files[0]
+            file_mb  = os.path.getsize(mp4_path) / 1024 / 1024
+
+            try:
+                upload_result = upload_attachment([mp4_path], self.dataFB)
+            except Exception as ue:
+                self._reply(snap, f"❌ Upload thất bại: {str(ue)[:80]}\n  🔗 {yt_link}")
+                try: os.unlink(mp4_path)
+                except: pass
+                return
+
+            if not upload_result or not upload_result.get("attachmentID"):
+                self._reply(snap, f"❌ Upload lên Facebook thất bại.\n  🔗 {yt_link}")
+                try: os.unlink(mp4_path)
+                except: pass
+                return
+
+            attach_id = upload_result["attachmentID"]
+            result = send_group_ls_image(
+                self.dataFB, thread_id, attach_id,
+                caption=(
+                    f"🎬 {title}\n"
+                    f"👤 {channel}  ⏱️ {mins}:{secs:02d}  📦 {file_mb:.1f}MB\n"
+                    f"🔗 {yt_link}"
+                )
+            )
+            try: os.unlink(mp4_path)
+            except: pass
+
+            if not (isinstance(result, dict) and result.get("success") == 1):
+                self._reply(snap, f"🎬 {title}\n  ❌ Gửi file thất bại.\n  🔗 {yt_link}")
+
+        threading.Thread(target=_download_video, daemon=True).start()
 
     def _cmd_youtube(self, snap: dict, arg: str) -> None:
         if not arg:
