@@ -1,0 +1,3010 @@
+"""
+╔══════════════════════════════════════════════════════════╗
+║         🤖 FACEBOOK GROUP BOT — fbchat-v2              ║
+║         Được tạo bởi AI · Mọi quyền được bảo lưu       ║
+╚══════════════════════════════════════════════════════════╝
+
+📋 THÔNG TIN
+    /ping              → kiểm tra độ trễ
+    /help              → danh sách lệnh
+    /help2             → trang 2 lệnh
+    /help3             → trang 3 lệnh
+    /id                → xem threadID + userID
+    /info              → thông tin bot
+    /uptime            → thời gian bot đã chạy
+    /userinfo <uid>    → thông tin người dùng Facebook
+
+👥 QUẢN LÝ NHÓM (admin bot)
+    /tengroup <tên>    → đổi tên nhóm
+    /emoji <emoji>     → đổi emoji nhóm
+    /nick <uid> <tên>  → đổi biệt danh thành viên
+    /themadmin <uid>   → thêm admin nhóm
+    /xoadmin <uid>     → bỏ quyền admin nhóm
+    /tagall [msg]      → nhắc tất cả thành viên
+    /members           → liệt kê thành viên nhóm
+    /announce <text>   → gửi thông báo nổi bật
+
+🔧 CÔNG CỤ (admin bot)
+    /spam <n> <text>   → gửi lặp lại n lần (max 10)
+    /echo <text>       → lặp lại nội dung
+    /react <emoji>     → react vào tin nhắn
+    /unsend            → thu hồi tin nhắn cuối của bot
+    /search <từ>       → tìm user Facebook
+
+⚙️ CÀI ĐẶT BOT (admin bot)
+    /addadmin <uid>    → thêm admin bot
+    /removeadmin <uid> → xoá admin bot
+    /adminlist         → danh sách admin bot
+    /setprefix <ký tự> → đổi prefix lệnh
+    /setrules <text>   → đặt nội quy nhóm
+    /setgreeting <text>→ đặt tin chào thành viên mới
+    /blacklist <uid>   → chặn uid dùng bot
+    /whitelist <uid>   → bỏ chặn uid
+    /autoreply <on/off>→ bật/tắt tự động trả lời
+
+📜 KIỂM DUYỆT (admin bot)
+    /rules             → xem nội quy nhóm
+    /warn <uid> [lý do]→ cảnh cáo thành viên
+    /warnlist          → danh sách cảnh cáo
+    /clearwarn <uid>   → xoá cảnh cáo
+    /ban <uid> [lý do] → ban thành viên
+    /unban <uid>       → bỏ ban
+    /banlist           → danh sách bị ban
+
+🎮 VUI CHƠI & TRẮC NGHIỆM
+    /tung              → tung đồng xu
+    /random <min> <max>→ số ngẫu nhiên
+    /roll <NdM>        → tung xúc xắc (vd: 2d6)
+    /choose <a>|<b>    → chọn ngẫu nhiên
+    /8ball <câu hỏi>   → bói 8 quả bóng
+    /trivia            → câu hỏi kiến thức
+    /rps <kéo/búa/bao> → oẳn tù tì với bot
+
+🌤 TIỆN ÍCH
+    /thoitiet <tp>     → xem thời tiết thành phố
+    /dich <lang> <text>→ dịch văn bản (vi/en/ja/ko...)
+    /tinhtoan <bthuc>  → máy tính
+    /wiki <từ khoá>    → tìm Wikipedia
+    /qr <text>         → tạo mã QR
+    /base64 <text>     → mã hoá Base64
+    /decode64 <text>   → giải mã Base64
+    /hash <text>       → băm MD5/SHA256
+
+🖼 ẢNH & STICKER
+    /genanh <mô tả>    → tạo ảnh AI từ mô tả (Pollinations)
+    /anh <từ khoá>     → tìm ảnh ngẫu nhiên
+    /meme <text>       → tạo meme chữ trắng nền đen
+    /avatar <uid>      → lấy avatar người dùng
+
+🎵 ÂM NHẠC & VIDEO
+    /nhac <tên bài>    → tìm nhạc trên YouTube
+    /youtube <từ khoá> → tìm video YouTube
+    /videoinfo <link>  → thông tin video từ link YouTube
+    /lyric <tên bài>   → tìm lời bài hát
+
+📊 THỐNG KÊ
+    /stats             → thống kê nhóm và bot
+    /topwarn           → top người bị cảnh cáo nhiều nhất
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import math
+import os
+import random
+import re
+import sys
+import tempfile
+import time
+import threading
+import traceback
+import urllib.parse
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    import qrcode
+    from PIL import Image as PILImage
+    HAS_QR = True
+except ImportError:
+    HAS_QR = False
+
+from _core._session import dataGetHome
+from _core._utils import gen_threading_id, json_minimal, generate_session_id, generate_client_id
+from _features._facebook import _search
+from _features._facebook import _get_user_info
+from _features._thread import _all_thread_data
+from _features._thread import _changeNameThread
+from _features._thread import _changeEmoji
+from _features._thread import _changeNickname
+from _features._thread import _addAdmin
+from _messaging._send import api as SendAPI, send_group_ls, _make_mqtt_client, _j, LS_TOPIC, APP_ID, LS_VERSION_ID, _DEFAULT_TIMEOUT
+from _messaging._attachments import func as upload_attachment
+from _messaging._unsend import func as unsend_message
+from _messaging._reactions import func as react_message
+from _messaging._listening import listeningEvent
+from _messaging._listening_e2ee import listeningE2EEEvent
+
+
+CONFIG_PATH = HERE / "config.json"
+KEYS_PATH   = HERE / "keys.json"
+BOT_START_TIME = time.time()
+
+# ─── KEY SYSTEM ───────────────────────────────────────────────────
+def load_keys() -> dict:
+    if KEYS_PATH.exists():
+        try:
+            return json.loads(KEYS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"keys": {}, "user_keys": {}, "pending": {}, "group_owners": {}}
+
+def save_keys(data: dict) -> None:
+    KEYS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def gen_key(days: int = 30) -> str:
+    import secrets, string
+    chars = string.ascii_uppercase + string.digits
+    return "HARU-" + "".join(secrets.choice(chars) for _ in range(4)) + \
+           "-" + "".join(secrets.choice(chars) for _ in range(4)) + \
+           "-" + "".join(secrets.choice(chars) for _ in range(4))
+
+def _days_to_max_groups(days: int) -> int:
+    """Số nhóm tối đa theo số ngày của gói."""
+    if days <= 30:  return 1
+    if days <= 90:  return 3
+    return 99
+
+
+# ─── GỬI ẢNH TRỰC TIẾP QUA FACEBOOK UPLOAD API ─────────────────
+def send_group_ls_image(dataFB, thread_id: str, attachment_id, caption: str = "") -> dict:
+    """Gửi ảnh vào nhóm với attachment_id đã upload lên Facebook."""
+    from threading import Event
+    otid = gen_threading_id()
+    task_payload: dict = {
+        "thread_id": str(thread_id),
+        "otid": str(otid),
+        "source": 0,
+        "send_type": 1,
+        "text": caption,
+        "initiating_source": 0,
+        "attachment_fbids": [str(attachment_id)],
+    }
+    task = {
+        "failure_count": None,
+        "label": "46",
+        "payload": _j(task_payload),
+        "queue_name": str(thread_id),
+        "task_id": 1,
+    }
+    context = {
+        "app_id": APP_ID,
+        "payload": _j({
+            "epoch_id": int(otid),
+            "tasks": [task],
+            "version_id": LS_VERSION_ID,
+        }),
+        "request_id": 1,
+        "type": 3,
+    }
+
+    import ssl, paho.mqtt.client as mqtt
+    connected = Event()
+    published = Event()
+    state: dict = {"errors": []}
+    client, _ = _make_mqtt_client(dataFB)
+
+    def on_connect(c, ud, flags, rc, *args):
+        if int(rc) != 0:
+            state["errors"].append(f"connect rc={rc}")
+            connected.set(); published.set(); return
+        connected.set()
+        info = c.publish(LS_TOPIC, _j(context), qos=1)
+        if getattr(info, "rc", 0) != mqtt.MQTT_ERR_SUCCESS:
+            state["errors"].append(f"publish rc={info.rc}")
+            published.set()
+
+    def on_publish(c, ud, mid, *args):
+        published.set()
+
+    def on_disconnect(c, ud, rc, *args):
+        connected.set(); published.set()
+
+    client.on_connect = on_connect
+    client.on_publish = on_publish
+    client.on_disconnect = on_disconnect
+    try:
+        client.connect("edge-chat.facebook.com", port=443, keepalive=10)
+        client.loop_start()
+        connected.wait(timeout=15)
+        published.wait(timeout=15)
+        import time as _time; _time.sleep(1.5)
+    except Exception as e:
+        state["errors"].append(str(e))
+    finally:
+        try: client.disconnect()
+        except Exception: pass
+        try: client.loop_stop()
+        except Exception: pass
+
+    if state["errors"]:
+        return {"error": 1, "payload": {"errors": state["errors"]}}
+    return {"success": 1, "payload": {"messageID": str(otid)}}
+
+DIVIDER = "═" * 30
+
+# ─── 8BALL ANSWERS ───────────────────────────────────────────────
+BALL8_YES = [
+    "✅ Chắc chắn rồi!", "✅ Tất nhiên là có!", "✅ Theo quan điểm của tôi, có!",
+    "✅ Triển vọng rất tốt!", "✅ Khả năng cao!", "✅ Dấu hiệu rất tốt!",
+    "✅ Cứ tiến thôi!", "✅ Bạn có thể tin vào điều này!",
+]
+BALL8_NO = [
+    "❌ Quan điểm của tôi: Không.", "❌ Rất nghi ngờ.", "❌ Câu trả lời là Không.",
+    "❌ Đừng trông chờ vào điều đó.", "❌ Triển vọng không tốt.",
+    "❌ Nguồn tin nói: Không.", "❌ Tôi sẽ nói Không.",
+]
+BALL8_MAYBE = [
+    "🔮 Hãy hỏi lại sau.", "🔮 Tôi không thể đoán bây giờ.",
+    "🔮 Tập trung và hỏi lại.", "🔮 Câu trả lời mờ nhạt.",
+    "🔮 Tốt hơn không nên nói bây giờ.", "🔮 Không thể đoán được.",
+]
+
+# ─── TRIVIA ──────────────────────────────────────────────────────
+TRIVIA_POOL = [
+    ("Thủ đô của Nhật Bản là gì?", "Tokyo"),
+    ("Hành tinh nào lớn nhất trong hệ Mặt Trời?", "Sao Mộc"),
+    ("Ai là người đầu tiên đặt chân lên Mặt Trăng?", "Neil Armstrong"),
+    ("Ngôn ngữ lập trình nào được dùng để xây dựng bot này?", "Python"),
+    ("Nước nào có diện tích lớn nhất thế giới?", "Nga"),
+    ("Nguyên tố hóa học nào có ký hiệu Au?", "Vàng"),
+    ("Facebook được thành lập năm nào?", "2004"),
+    ("1 GB bằng bao nhiêu MB?", "1024"),
+    ("Bức tường nào nổi tiếng nhất Trung Quốc?", "Vạn Lý Trường Thành"),
+    ("Loài động vật nào chạy nhanh nhất trên cạn?", "Báo săn"),
+    ("Sông dài nhất thế giới?", "Sông Nile"),
+    ("Ai viết truyện Kiều?", "Nguyễn Du"),
+    ("Thủ đô của Việt Nam là gì?", "Hà Nội"),
+    ("Đơn vị tiền tệ của Nhật Bản?", "Yên"),
+    ("Trái Đất có bao nhiêu châu lục?", "7"),
+]
+_trivia_pending: dict[str, dict] = {}
+
+
+def load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        template = {
+            "cookies": "",
+            "prefix": "/",
+            "admins": [],
+            "rules": "",
+            "blacklist": [],
+            "greeting": "",
+            "autoreply": False,
+        }
+        CONFIG_PATH.write_text(
+            json.dumps(template, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    with CONFIG_PATH.open("r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    env_cookie = os.environ.get("FB_COOKIE", "").strip()
+    if env_cookie:
+        cfg["cookies"] = env_cookie
+
+    if not cfg.get("cookies") or "PASTE_YOUR" in str(cfg.get("cookies", "")):
+        print("[config] ❌ Bạn chưa cung cấp cookie Facebook.")
+        print("[config] Hãy điền 'cookies' vào config.json hoặc đặt env FB_COOKIE.")
+        sys.exit(1)
+
+    cfg.setdefault("prefix", "/")
+    cfg.setdefault("admins", [])
+    cfg.setdefault("rules", "")
+    cfg.setdefault("blacklist", [])
+    cfg.setdefault("greeting", "")
+    cfg.setdefault("autoreply", False)
+    return cfg
+
+
+def save_config(cfg: dict) -> None:
+    CONFIG_PATH.write_text(
+        json.dumps(cfg, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def is_valid_datafb(dataFB: object) -> bool:
+    if not isinstance(dataFB, dict):
+        return False
+    facebook_id = str(dataFB.get("FacebookID") or "").strip()
+    if not facebook_id.isdigit():
+        return False
+    required_fields = ("fb_dtsg", "jazoest", "sessionID", "clientRevision", "cookieFacebook")
+    return all(str(dataFB.get(field) or "").strip() for field in required_fields)
+
+
+def log(tag: str, msg: str) -> None:
+    icons = {
+        "bot": "🤖", "recv": "📩", "send": "📤", "err": "❌",
+        "boot": "🚀", "warn": "⚠️", "react": "💬", "unsend": "🗑",
+        "info": "ℹ️",
+    }
+    icon = icons.get(tag, "•")
+    print(f"[{datetime.now():%H:%M:%S}] {icon} [{tag.upper()}] {msg}")
+
+
+def format_uptime(seconds: float) -> str:
+    s = int(seconds)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m {sec}s"
+    if m:
+        return f"{m}m {sec}s"
+    return f"{sec}s"
+
+
+def box(title: str, lines: list[str]) -> str:
+    content = "\n".join(lines)
+    return f"╔{'═'*34}╗\n║  {title:<32}║\n╠{'═'*34}╣\n{content}\n╚{'═'*34}╝"
+
+
+def section(title: str) -> str:
+    return f"\n{'─'*3} {title} {'─'*3}"
+
+
+# ─── HTTP HELPER ─────────────────────────────────────────────────
+def http_get(url: str, timeout: int = 8) -> str | None:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return None
+
+
+def http_get_bytes(url: str, timeout: int = 10) -> bytes | None:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+
+class GroupBot:
+
+    def __init__(self, dataFB: dict, prefix: str = "/", admins: list | None = None,
+                 cfg: dict | None = None):
+        self.dataFB = dataFB
+        self.prefix = prefix
+        self.admins = set(map(str, admins or []))
+        self.cfg = cfg or {}
+
+        self.sender = SendAPI()
+        self.listener = listeningEvent(dataFB)
+
+        self._last_seen_message_id: str | None = None
+        self._last_bot_message: dict[str, str] = {}
+        self._warn_list: dict[str, list[str]] = {}
+        self._ban_set: set[str] = set(self.cfg.get("banlist", []))
+        self._blacklist: set[str] = set(self.cfg.get("blacklist", []))
+        self._msg_count: int = 0
+        self._menu_state: dict[str, float] = {}   # thread_id → timestamp khi /menu được gọi
+        self._key_data: dict = load_keys()         # hệ thống key
+        self._key_nagged: set[str] = set()         # "uid:thread_id" đã được nhắc mua key
+        self._announced_groups: set[str] = set(   # nhóm đã gửi tin chào
+            self._key_data.get("announced_groups", [])
+        )
+
+        # ── Phân cấp quyền lệnh ──────────────────────────────────
+        # Tier 1: Công khai (không cần key)
+        self._public_cmds = {"ping", "info", "menu", "nhapkey", "muakey", "id", "uptime"}
+
+        # Tier 2: Member — chỉ cần có key (toàn thành viên trong nhóm)
+        # (mọi lệnh không nằm trong các set trên mặc định là tier member)
+
+        # Tier 3: Group Admin — cần key + được chủ nhóm thêm làm admin nhóm
+        self._groupadmin_cmds = {
+            "tagall", "members", "announce",
+            "warn", "warnlist", "clearwarn", "ban", "unban", "banlist", "topwarn",
+            "spam", "echo", "react", "unsend", "search", "userinfo",
+            "rules", "stats",
+        }
+
+        # Tier 4: Key Owner — chỉ chủ nhóm (người đã mua & kích hoạt key)
+        self._keyowner_cmds = {
+            "tengroup", "emoji", "nick", "themadmin", "xoadmin",
+            "setprefix", "setrules", "setgreeting",
+            "blacklist", "whitelist", "autoreply",
+            "daten", "setjoinmsg",
+            "addgroupadmin", "removegroupadmin", "groupadminlist",
+            "addadmin", "removeadmin", "adminlist",
+        }
+
+        self._handlers = {
+            # Thông tin (public)
+            "ping":             self._cmd_ping,
+            "menu":             self._cmd_menu,
+            "id":               self._cmd_id,
+            "info":             self._cmd_info,
+            "uptime":           self._cmd_uptime,
+            # Member
+            "userinfo":         self._cmd_userinfo,
+            # Group Admin
+            "tagall":           self._cmd_tagall,
+            "members":          self._cmd_members,
+            "announce":         self._cmd_announce,
+            "spam":             self._cmd_spam,
+            "echo":             self._cmd_echo,
+            "react":            self._cmd_react,
+            "unsend":           self._cmd_unsend,
+            "search":           self._cmd_search,
+            "rules":            self._cmd_rules,
+            "warn":             self._cmd_warn,
+            "warnlist":         self._cmd_warnlist,
+            "clearwarn":        self._cmd_clearwarn,
+            "ban":              self._cmd_ban,
+            "unban":            self._cmd_unban,
+            "banlist":          self._cmd_banlist,
+            "stats":            self._cmd_stats,
+            "topwarn":          self._cmd_topwarn,
+            # Key Owner
+            "tengroup":         self._cmd_tengroup,
+            "emoji":            self._cmd_emoji,
+            "nick":             self._cmd_nick,
+            "themadmin":        self._cmd_themadmin,
+            "xoadmin":          self._cmd_xoadmin,
+            "daten":            self._cmd_daten,
+            "setjoinmsg":       self._cmd_setjoinmsg,
+            "addgroupadmin":    self._cmd_addgroupadmin,
+            "removegroupadmin": self._cmd_removegroupadmin,
+            "groupadminlist":   self._cmd_groupadminlist,
+            "addadmin":         self._cmd_addadmin,
+            "removeadmin":      self._cmd_removeadmin,
+            "adminlist":        self._cmd_adminlist,
+            "setprefix":        self._cmd_setprefix,
+            "setrules":         self._cmd_setrules,
+            "setgreeting":      self._cmd_setgreeting,
+            "blacklist":        self._cmd_blacklist,
+            "whitelist":        self._cmd_whitelist,
+            "autoreply":        self._cmd_autoreply,
+            # Key system (public + member)
+            "nhapkey":          self._cmd_nhapkey,
+            "muakey":           self._cmd_muakey,
+            # Vui chơi (member)
+            "tung":             self._cmd_tung,
+            "random":           self._cmd_random,
+            "roll":             self._cmd_roll,
+            "choose":           self._cmd_choose,
+            "8ball":            self._cmd_8ball,
+            "trivia":           self._cmd_trivia,
+            "rps":              self._cmd_rps,
+            # Tiện ích (member)
+            "thoitiet":         self._cmd_thoitiet,
+            "dich":             self._cmd_dich,
+            "tinhtoan":         self._cmd_tinhtoan,
+            "wiki":             self._cmd_wiki,
+            "qr":               self._cmd_qr,
+            "base64":           self._cmd_base64,
+            "decode64":         self._cmd_decode64,
+            "hash":             self._cmd_hash,
+            # Ảnh & Video (member)
+            "genanh":           self._cmd_genanh,
+            "anh":              self._cmd_anh,
+            "meme":             self._cmd_meme,
+            "avatar":           self._cmd_avatar,
+            # Âm nhạc & Video (member)
+            "nhac":             self._cmd_nhac,
+            "youtube":          self._cmd_youtube,
+            "videoinfo":        self._cmd_videoinfo,
+            "lyric":            self._cmd_lyric,
+        }
+
+    def run(self) -> None:
+        log("boot", f"✅ Đăng nhập thành công — UID = {self.dataFB.get('FacebookID')}")
+        self.listener.get_last_seq_id()
+
+        t = threading.Thread(
+            target=self.listener.connect_mqtt,
+            name="fbchat-listener",
+            daemon=True,
+        )
+        t.start()
+        log("bot", f"Listener khởi động. Prefix: '{self.prefix}' | Admins: {self.admins or 'tất cả'}")
+        log("bot", f"Tổng số lệnh: {len(self._handlers)}")
+
+        try:
+            while True:
+                self._poll_once()
+                time.sleep(0.3)
+        except KeyboardInterrupt:
+            log("bot", "Đã dừng theo yêu cầu người dùng.")
+
+    # ── KEY HELPERS ───────────────────────────────────────────────
+    def _key_valid(self, uid: str) -> bool:
+        """Kiểm tra uid có key hợp lệ chưa. Admin luôn pass."""
+        if uid in self.admins:
+            return True
+        uk = self._key_data.get("user_keys", {}).get(uid)
+        if not uk:
+            return False
+        return time.time() < uk.get("expires", 0)
+
+    def _check_group_access(self, thread_id: str, sender_id: str) -> tuple[bool, str]:
+        """Kiểm tra nhóm có quyền dùng bot không. Trả về (ok, thông báo lỗi)."""
+        p = self.prefix
+        if sender_id in self.admins:
+            return True, ""
+        kd = self._key_data
+        group_owners = kd.get("group_owners", {})
+
+        # Nhóm đã đăng ký → check key chủ nhóm
+        if thread_id in group_owners:
+            owner_uid = group_owners[thread_id]
+            uk = kd.get("user_keys", {}).get(owner_uid)
+            if uk and time.time() < uk.get("expires", 0):
+                return True, ""
+            exp_str = datetime.fromtimestamp(uk.get("expires", 0)).strftime("%d/%m/%Y") if uk else "?"
+            return False, (
+                "🔐 KEY NHÓM ĐÃ HẾT HẠN!\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                f"  Hết hạn: {exp_str}\n"
+                f"  Gia hạn: {p}muakey\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+            )
+
+        # Nhóm chưa đăng ký → người gửi cần có key hợp lệ
+        uk = kd.get("user_keys", {}).get(sender_id)
+        if not uk or time.time() >= uk.get("expires", 0):
+            return False, (
+                "🔐 BẠN CHƯA CÓ KEY KÍCH HOẠT!\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                f"  Nhập key: {p}nhapkey <KEY>\n"
+                f"  Mua key : {p}muakey\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+            )
+
+        # Kiểm tra giới hạn số nhóm
+        max_groups = uk.get("max_groups", 1)
+        groups = uk.get("groups", [])
+        if len(groups) >= max_groups:
+            return False, (
+                "❌ ĐÃ VƯỢT GIỚI HẠN SỐ NHÓM!\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                f"  Gói của bạn: {max_groups} nhóm\n"
+                f"  Đang dùng : {len(groups)} nhóm\n"
+                f"  Mua thêm  : {p}muakey\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+            )
+
+        # Đăng ký nhóm mới (auto)
+        groups.append(thread_id)
+        uk["groups"] = groups
+        kd.setdefault("group_owners", {})[thread_id] = sender_id
+        save_keys(kd)
+        log("bot", f"Nhóm {thread_id} đã được đăng ký cho UID {sender_id} ({len(groups)}/{max_groups})")
+        return True, ""
+
+    def _get_bot_name(self, thread_id: str) -> str:
+        """Trả tên bot tuỳ chỉnh của chủ nhóm, hoặc 'HARU88' nếu chưa đặt."""
+        kd = self._key_data
+        owner = kd.get("group_owners", {}).get(thread_id)
+        if owner:
+            uk = kd.get("user_keys", {}).get(owner, {})
+            name = uk.get("bot_name", "").strip()
+            if name:
+                return name
+        return "HARU88"
+
+    def _is_key_owner(self, thread_id: str, uid: str) -> bool:
+        """Kiểm tra uid có phải chủ nhóm (người đã đăng ký key cho nhóm)."""
+        if uid in self.admins:
+            return True
+        return self._key_data.get("group_owners", {}).get(thread_id) == uid
+
+    def _is_group_admin(self, thread_id: str, uid: str) -> bool:
+        """Kiểm tra uid có phải admin nhóm (chủ nhóm hoặc được thêm bởi chủ nhóm)."""
+        if uid in self.admins:
+            return True
+        if self._is_key_owner(thread_id, uid):
+            return True
+        ga = self._key_data.get("group_admins", {}).get(thread_id, [])
+        return uid in ga
+
+    def _check_access(self, thread_id: str, sender_id: str, cmd: str) -> tuple[bool, str]:
+        """Kiểm tra quyền theo phân cấp: public → member → group_admin → key_owner."""
+        p = self.prefix
+
+        # Tier 1: Công khai — luôn cho phép
+        if cmd in self._public_cmds:
+            return True, ""
+
+        # Bot super-admin luôn pass
+        if sender_id in self.admins:
+            return True, ""
+
+        # Tất cả tier còn lại cần key + nhóm hợp lệ
+        ok, msg = self._check_group_access(thread_id, sender_id)
+        if not ok:
+            return False, msg
+
+        # Tier 2: Member — chỉ cần key
+        if cmd not in self._groupadmin_cmds and cmd not in self._keyowner_cmds:
+            return True, ""
+
+        # Tier 3: Group Admin
+        if cmd in self._groupadmin_cmds:
+            if not self._is_group_admin(thread_id, sender_id):
+                return False, (
+                    "⛔ KHÔNG ĐỦ QUYỀN!\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    "  Lệnh này chỉ ADMIN NHÓM mới dùng được\n"
+                    f"  Yêu cầu chủ nhóm chạy:\n"
+                    f"  {p}addgroupadmin <uid của bạn>\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                )
+            return True, ""
+
+        # Tier 4: Key Owner
+        if cmd in self._keyowner_cmds:
+            if not self._is_key_owner(thread_id, sender_id):
+                return False, (
+                    "⛔ KHÔNG ĐỦ QUYỀN!\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    "  Lệnh này chỉ CHỦ NHÓM mới dùng được\n"
+                    "  (người đã mua & kích hoạt key)\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                )
+            return True, ""
+
+        return True, ""
+
+    def _send_dm(self, uid: str, content: str) -> bool:
+        """Gửi tin nhắn riêng trực tiếp cho uid."""
+        try:
+            result = send_group_ls(self.dataFB, content, str(uid))
+            return isinstance(result, dict) and result.get("success") == 1
+        except Exception as e:
+            log("err", f"DM tới {uid} thất bại: {e}")
+            return False
+
+    def _poll_once(self) -> None:
+        get_message = getattr(self.listener, "get_message", None)
+        snap = get_message() if callable(get_message) else self.listener.bodyResults
+        if snap is None:
+            return
+        mid = snap.get("messageID")
+        body = (snap.get("body", "") or "").strip()
+
+        if not mid or mid == self._last_seen_message_id:
+            return
+        self._last_seen_message_id = mid
+
+        sender_id = str(snap.get("userID") or "")
+        if sender_id == str(self.dataFB.get("FacebookID")):
+            return
+
+        # Blacklist check
+        if sender_id in self._blacklist:
+            return
+
+        self._msg_count += 1
+        thread_id = str(snap.get("replyToID", ""))
+
+        # ── Lần đầu bot xuất hiện trong nhóm → gửi tin chào ──────
+        is_group = snap.get("type") != "user"
+        if is_group and thread_id and thread_id not in self._announced_groups:
+            self._announced_groups.add(thread_id)
+            kd = self._key_data
+            ann_list = kd.setdefault("announced_groups", [])
+            if thread_id not in ann_list:
+                ann_list.append(thread_id)
+                save_keys(kd)
+            p = self.prefix
+            bot_name = self._get_bot_name(thread_id)
+            # Kiểm tra tin chào tùy chỉnh của chủ nhóm
+            owner = kd.get("group_owners", {}).get(thread_id)
+            custom_join = ""
+            if owner:
+                uk = kd.get("user_keys", {}).get(owner, {})
+                custom_join = uk.get("join_message", "").strip()
+            if custom_join:
+                join_msg = custom_join.replace("{bot_name}", bot_name).replace("{prefix}", p)
+            else:
+                join_msg = (
+                    f"👋 Xin chào mọi người!\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"  Tôi là bot {bot_name}!\n"
+                    f"  ✅ Kích hoạt key: {p}nhapkey <KEY>\n"
+                    f"  🛒 Mua key      : {p}muakey\n"
+                    f"  📋 Xem lệnh    : {p}menu\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                )
+            try:
+                self.sender.send(self.dataFB, join_msg, thread_id)
+                log("bot", f"📢 Đã gửi tin chào nhóm {thread_id}")
+            except Exception as _je:
+                log("err", f"Gửi tin chào nhóm {thread_id} thất bại: {_je}")
+
+        # Trivia answer check
+        if thread_id in _trivia_pending:
+            t_data = _trivia_pending[thread_id]
+            answer = body.lower()
+            correct = t_data["answer"].lower()
+            if correct in answer or answer in correct:
+                self._reply(snap, f"🎉 Chính xác! Câu trả lời đúng là: **{t_data['answer']}**\n✨ Bạn thật thông minh!")
+            else:
+                self._reply(snap, f"❌ Sai rồi! Đáp án đúng là: **{t_data['answer']}**\n💡 Cố lên lần sau nhé!")
+            del _trivia_pending[thread_id]
+            return
+
+        if not body:
+            return
+
+        # Menu số response (1–10) — luôn phản hồi trong 10 phút sau /menu
+        menu_ts = self._menu_state.get(thread_id, 0)
+        if body.strip() in {str(i) for i in range(1, 11)} and time.time() - menu_ts < 600:
+            self._handle_menu_reply(snap, body.strip())
+            return
+
+        # Auto reply mode
+        if self.cfg.get("autoreply") and not body.startswith(self.prefix):
+            ar_replies = [
+                "Chào bạn! Gõ /menu để xem danh sách lệnh nhé! 😊",
+                "Tôi là bot tự động. Dùng /menu để biết thêm! 🤖",
+                "Xin chào! Tôi không hiểu. Thử /menu xem nào! 👋",
+            ]
+            self._reply(snap, random.choice(ar_replies))
+            return
+
+        if not body.startswith(self.prefix):
+            # Nhắc mua key một lần cho mỗi người chưa có key trong nhóm (mỗi session)
+            nag_key = f"{sender_id}:{thread_id}"
+            if is_group and nag_key not in self._key_nagged and sender_id not in self.admins:
+                kd = self._key_data
+                uk = kd.get("user_keys", {}).get(sender_id)
+                has_key = bool(uk) and time.time() < uk.get("expires", 0)
+                if not has_key:
+                    self._key_nagged.add(nag_key)
+                    p = self.prefix
+                    bot_name = self._get_bot_name(thread_id)
+                    self._reply(snap, (
+                        f"👋 Xin chào! Tôi là bot {bot_name}.\n"
+                        f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                        f"  Để dùng bot, bạn cần KEY!\n"
+                        f"  ✅ Nhập key: {p}nhapkey <KEY>\n"
+                        f"  🛒 Mua key : {p}muakey\n"
+                        f"  📋 Xem lệnh: {p}menu\n"
+                        f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                    ))
+            return
+
+        without_prefix = body[len(self.prefix):].strip()
+        if not without_prefix:
+            return
+        parts = without_prefix.split(maxsplit=1)
+        cmd = parts[0].lower()
+        arg = parts[1] if len(parts) > 1 else ""
+
+        handler = self._handlers.get(cmd)
+        if handler is None:
+            return
+
+        # Phân cấp quyền — kiểm tra theo tier
+        ok, msg = self._check_access(thread_id, sender_id, cmd)
+        if not ok:
+            self._reply(snap, msg)
+            return
+
+        log("recv", f"/{cmd} từ {sender_id}: {arg!r}")
+        try:
+            handler(snap, arg)
+        except Exception as exc:
+            log("err", f"Lỗi khi xử lý lệnh /{cmd}: {exc}")
+            traceback.print_exc()
+            self._reply(snap, f"❌ Lỗi khi thực thi lệnh /{cmd}:\n{exc}")
+
+    def _is_admin(self, snap: dict) -> bool:
+        if not self.admins:
+            return True
+        return str(snap.get("userID") or "") in self.admins
+
+    def _reply(self, snap: dict, content: str) -> None:
+        thread_id = str(snap["replyToID"])
+        result = self.sender.send(
+            self.dataFB, content, thread_id,
+            replyMessage=True,
+            messageID=snap.get("messageID"),
+        )
+        if isinstance(result, dict) and result.get("success") == 1:
+            try:
+                self._last_bot_message[thread_id] = result["payload"]["messageID"]
+            except (KeyError, TypeError):
+                pass
+            log("send", f"→ {thread_id}: {content[:60]!r}{'...' if len(content)>60 else ''}")
+        else:
+            log("send", f"FAIL → {thread_id}: {result}")
+
+    def _send_plain(self, snap: dict, content: str) -> None:
+        thread_id = str(snap["replyToID"])
+        result = self.sender.send(self.dataFB, content, thread_id)
+        if isinstance(result, dict) and result.get("success") == 1:
+            try:
+                self._last_bot_message[thread_id] = result["payload"]["messageID"]
+            except (KeyError, TypeError):
+                pass
+
+    def _send_image_url(self, snap: dict, image_url: str, caption: str = "") -> bool:
+        """Tải ảnh từ URL → upload lên Facebook → gửi vào nhóm."""
+        if snap.get("type") == "user":
+            return False
+        thread_id = str(snap["replyToID"])
+        tmp_path = None
+        try:
+            data = http_get_bytes(image_url, timeout=20)
+            if not data or len(data) < 500:
+                return False
+            suffix = ".png" if "png" in image_url.lower() else ".jpg"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+
+            # Upload lên Facebook, lấy attachment ID
+            upload_result = upload_attachment([tmp_path], self.dataFB)
+            if not upload_result or not upload_result.get("attachmentID"):
+                log("err", f"Upload thất bại: {upload_result}")
+                return False
+
+            attach_id = upload_result["attachmentID"]
+            log("send", f"✅ Upload ảnh thành công, ID={attach_id}")
+
+            # Gửi với attachment ID qua LS
+            result = send_group_ls_image(self.dataFB, thread_id, attach_id, caption)
+            if isinstance(result, dict) and result.get("success") == 1:
+                log("send", f"🖼 Đã gửi ảnh vào {thread_id}")
+                return True
+            else:
+                log("err", f"Gửi ảnh thất bại: {result}")
+                return False
+        except Exception as e:
+            log("err", f"_send_image_url lỗi: {e}")
+            return False
+        finally:
+            if tmp_path:
+                try: os.unlink(tmp_path)
+                except Exception: pass
+
+    # ══════════════════════════════════════════════════════
+    # 📋 THÔNG TIN
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_ping(self, snap: dict, arg: str) -> None:
+        sent_ts = int(snap.get("timestamp") or 0)
+        latency_ms = max(0, int(time.time() * 1000) - sent_ts) if sent_ts else 0
+        bar = "█" * min(10, latency_ms // 20) + "░" * (10 - min(10, latency_ms // 20))
+        self._reply(snap, (
+            f"🏓 PONG!\n"
+            f"{DIVIDER}\n"
+            f"  Độ trễ : {latency_ms} ms\n"
+            f"  [{bar}]\n"
+            f"  {'🟢 Rất nhanh' if latency_ms < 300 else '🟡 Bình thường' if latency_ms < 1000 else '🔴 Chậm'}"
+        ))
+
+    # ── MENU DANH MỤC ────────────────────────────────────────────
+    _MENU_CATS = [
+        ("1️⃣",  "📋 Thông tin",        ["ping","id","info","uptime","userinfo"]),
+        ("2️⃣",  "👥 Quản lý nhóm",     ["tengroup","emoji","nick","themadmin","xoadmin","tagall","members","announce"]),
+        ("3️⃣",  "🔧 Công cụ",          ["spam","echo","react","unsend","search"]),
+        ("4️⃣",  "🎮 Vui chơi",         ["tung","random","roll","choose","8ball","trivia","rps"]),
+        ("5️⃣",  "🌤 Tiện ích",          ["thoitiet","dich","tinhtoan","wiki","qr","base64","decode64","hash"]),
+        ("6️⃣",  "🖼 Ảnh AI",           ["genanh","anh","meme","avatar","qr"]),
+        ("7️⃣",  "🎵 Nhạc & Video",     ["nhac","youtube","videoinfo","lyric"]),
+        ("8️⃣",  "📜 Kiểm duyệt",       ["rules","warn","warnlist","clearwarn","ban","unban","banlist"]),
+        ("9️⃣",  "⚙️ Cài đặt bot",      ["addadmin","removeadmin","adminlist","setprefix","setrules","setgreeting","blacklist","whitelist","autoreply"]),
+        ("🔟", "📊 Thống kê & Key",    ["stats","topwarn","nhapkey","muakey","taokey"]),
+    ]
+
+    _CAT_DETAIL = {
+        "1": (
+            "📋 THÔNG TIN",
+            ["ping      — Kiểm tra độ trễ",
+             "id        — Xem thread/user ID",
+             "info      — Thông tin bot",
+             "uptime    — Thời gian hoạt động",
+             "userinfo <uid> — Thông tin user FB"]
+        ),
+        "2": (
+            "👥 QUẢN LÝ NHÓM  (cần admin bot)",
+            ["tengroup <tên>    — Đổi tên nhóm",
+             "emoji <emoji>     — Đổi emoji nhóm",
+             "nick <uid> <tên>  — Đổi biệt danh",
+             "themadmin <uid>   — Thêm admin nhóm",
+             "xoadmin <uid>     — Bỏ admin nhóm",
+             "tagall [msg]      — Tag tất cả",
+             "members           — Danh sách thành viên",
+             "announce <text>   — Gửi thông báo"]
+        ),
+        "3": (
+            "🔧 CÔNG CỤ  (cần admin bot)",
+            ["spam <n> <text>   — Gửi lặp lại (max 10)",
+             "echo <text>       — Lặp lại nội dung",
+             "react <emoji>     — React tin nhắn",
+             "unsend            — Thu hồi tin bot",
+             "search <tên>      — Tìm user Facebook"]
+        ),
+        "4": (
+            "🎮 VUI CHƠI",
+            ["tung              — Tung đồng xu",
+             "random <min> <max>— Số ngẫu nhiên",
+             "roll <2d6>        — Tung xúc xắc",
+             "choose <a>|<b>    — Bot chọn ngẫu nhiên",
+             "8ball <câu hỏi>   — Bói 8 bóng",
+             "trivia            — Câu hỏi IQ",
+             "rps k/b/b         — Oẳn tù tì"]
+        ),
+        "5": (
+            "🌤 TIỆN ÍCH",
+            ["thoitiet <tỉnh>   — Thời tiết",
+             "dich <lang> <text>— Dịch văn bản",
+             "tinhtoan <bt>     — Máy tính",
+             "wiki <từ khoá>    — Tra Wikipedia",
+             "qr <text>         — Tạo mã QR (ảnh)",
+             "base64 <text>     — Mã hoá Base64",
+             "decode64 <text>   — Giải mã Base64",
+             "hash <text>       — Băm MD5/SHA256"]
+        ),
+        "6": (
+            "🖼 ẢNH AI  (gửi ảnh trực tiếp vào chat)",
+            ["genanh <mô tả>    — Tạo ảnh AI",
+             "anh <từ khoá>     — Ảnh ngẫu nhiên",
+             "meme <top>|<bot>  — Tạo meme",
+             "avatar <uid>      — Avatar Facebook",
+             "qr <text>         — Mã QR dạng ảnh"]
+        ),
+        "7": (
+            "🎵 NHẠC & VIDEO",
+            ["nhac <tên bài>    — Tìm nhạc YouTube",
+             "youtube <từ>      — Tìm video YouTube",
+             "videoinfo <link>  — Thông tin video",
+             "lyric <tên bài>   — Lời bài hát"]
+        ),
+        "8": (
+            "📜 KIỂM DUYỆT  (cần admin bot)",
+            ["rules             — Xem nội quy",
+             "warn <uid> [lý]   — Cảnh cáo",
+             "warnlist          — Danh sách cảnh cáo",
+             "clearwarn <uid>   — Xoá cảnh cáo",
+             "ban <uid> [lý]    — Ban thành viên",
+             "unban <uid>       — Bỏ ban",
+             "banlist           — Danh sách bị ban"]
+        ),
+        "9": (
+            "⚙️ CÀI ĐẶT BOT  (chỉ chủ nhóm)",
+            ["daten <tên>           — Đổi tên hiển thị của bot",
+             "setjoinmsg <text>     — Đặt tin chào khi bot vào nhóm",
+             "setjoinmsg reset      — Xoá tin chào tùy chỉnh",
+             "addgroupadmin <uid>   — Thêm admin nhóm",
+             "removegroupadmin <uid>— Xoá admin nhóm",
+             "groupadminlist        — Xem danh sách admin nhóm",
+             "setprefix <ký>        — Đổi prefix lệnh",
+             "setrules <text>       — Đặt nội quy nhóm",
+             "setgreeting <text>    — Tin chào thành viên mới",
+             "blacklist <uid>       — Chặn user",
+             "whitelist <uid>       — Bỏ chặn user",
+             "autoreply on/off      — Bật/tắt auto reply"]
+        ),
+        "10": (
+            "📊 THỐNG KÊ & KEY",
+            ["stats             — Thống kê & thông tin key của bạn",
+             "topwarn           — Top người bị cảnh cáo nhiều nhất",
+             "nhapkey <KEY>     — Kích hoạt key",
+             "muakey            — Xem thông tin mua key"]
+        ),
+    }
+
+    def _cmd_menu(self, snap: dict, arg: str) -> None:
+        p = self.prefix
+        thread_id = str(snap.get("replyToID", ""))
+        self._menu_state[thread_id] = time.time()
+        uid = str(snap.get("userID", ""))
+        key_status = "✅ Đã kích hoạt" if self._key_valid(uid) else "🔐 Chưa có key"
+        bot_name = self._get_bot_name(thread_id)
+        total = sum(len(c[2]) for c in self._MENU_CATS)
+        lines = [
+            f"🎰〖 BOT {bot_name} MENU 〗🎰",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"  Prefix: {p}    Tổng: {total}+ lệnh",
+            f"  Key  : {key_status}",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+        ]
+        for num, title, cmds in self._MENU_CATS:
+            lines.append(f"  {num}  {title}  ({len(cmds)} lệnh)")
+        lines += [
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            "  Trả lời số 1-10 để xem chi tiết",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+        ]
+        self._reply(snap, "\n".join(lines))
+
+    def _handle_menu_reply(self, snap: dict, num: str) -> None:
+        p = self.prefix
+        detail = self._CAT_DETAIL.get(num)
+        if not detail:
+            return
+        title, cmds = detail
+        thread_id = str(snap.get("replyToID", ""))
+        bot_name = self._get_bot_name(thread_id)
+        lines = [
+            f"🎰〖 BOT {bot_name} 〗🎰",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"  {title}",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+        ]
+        for cmd_line in cmds:
+            lines.append(f"  {p}{cmd_line}")
+        lines += [
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"  Gõ {p}menu để quay lại danh sách",
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+        ]
+        self._reply(snap, "\n".join(lines))
+
+    # _cmd_help2 / _cmd_help3 đã được gộp vào _cmd_menu + _handle_menu_reply
+
+    # ══════════════════════════════════════════════════════
+    # 🔑 HỆ THỐNG KEY
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_nhapkey(self, snap: dict, arg: str) -> None:
+        uid = str(snap.get("userID", ""))
+        key = arg.strip().upper()
+        if not key:
+            self._reply(snap, f"❌ Dùng: {self.prefix}nhapkey <KEY>")
+            return
+        kd = self._key_data
+        if key not in kd.get("keys", {}):
+            self._reply(snap, "❌ Key không tồn tại hoặc đã bị xoá!")
+            return
+        k_info = kd["keys"][key]
+        if k_info.get("used") and k_info.get("uid") != uid:
+            self._reply(snap, "❌ Key này đã được dùng bởi người khác!")
+            return
+        days = k_info.get("days", 30)
+        expires = time.time() + days * 86400
+        kd["keys"][key] = {**k_info, "used": True, "uid": uid}
+        if "user_keys" not in kd:
+            kd["user_keys"] = {}
+        max_groups = _days_to_max_groups(days)
+        old_uk = kd["user_keys"].get(uid, {})
+        kd["user_keys"][uid] = {
+            "key": key, "expires": expires, "days": days,
+            "max_groups": max_groups,
+            "groups": old_uk.get("groups", []),
+            "bot_name": old_uk.get("bot_name", ""),
+        }
+        save_keys(kd)
+        exp_str = datetime.fromtimestamp(expires).strftime("%d/%m/%Y %H:%M")
+        groups_used = len(old_uk.get("groups", []))
+        days_left = days  # mới kích hoạt, còn nguyên
+        p = self.prefix
+        self._reply(snap, (
+            "╔══════════════════════════════════╗\n"
+            "║   ✅ KEY KÍCH HOẠT THÀNH CÔNG!   ║\n"
+            "╚══════════════════════════════════╝\n"
+            f"  🔑 Mã key   : {key}\n"
+            f"  📦 Gói      : {days} ngày\n"
+            f"  📅 Hết hạn  : {exp_str}\n"
+            f"  👥 Số nhóm  : {groups_used}/{max_groups} nhóm đã dùng\n"
+            f"  ⏳ Còn lại  : {days_left} ngày\n"
+            "────────────────────────────────────\n"
+            f"  📋 Xem lệnh  : {p}menu\n"
+            f"  🏷️  Đổi tên bot : {p}daten <tên>\n"
+            f"  📢 Tin chào nhóm: {p}setjoinmsg <text>\n"
+            "────────────────────────────────────"
+        ))
+
+    def _cmd_muakey(self, snap: dict, arg: str) -> None:
+        uid = str(snap.get("userID", ""))
+        bank = self.cfg.get("bank_info", {})
+        bank_name  = bank.get("name",   "BIDV")
+        bank_stk   = bank.get("stk",    "1234567890")
+        bank_owner = bank.get("owner",  "ADMIN HARU88")
+        price_30   = bank.get("price_30",  "50.000đ")
+        price_90   = bank.get("price_90",  "120.000đ")
+        price_365  = bank.get("price_365", "400.000đ")
+        kd = self._key_data
+        if "pending" not in kd:
+            kd["pending"] = {}
+        kd["pending"][uid] = {"ts": time.time()}
+        save_keys(kd)
+        self._reply(snap, (
+            "🛒 MUA KEY BOT\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  GÓI 30  ngày : {price_30}  (1 nhóm)\n"
+            f"  GÓI 90  ngày : {price_90}  (3 nhóm)\n"
+            f"  GÓI 365 ngày : {price_365}  (∞ nhóm)\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            "  THÔNG TIN CHUYỂN KHOẢN\n"
+            f"  Ngân hàng: {bank_name}\n"
+            f"  STK      : {bank_stk}\n"
+            f"  Chủ TK   : {bank_owner}\n"
+            f"  Nội dung : HARU88 {uid}\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            "  Sau khi CK admin sẽ xác nhận\n"
+            "  và bot tự gửi KEY cho bạn!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        ))
+
+    def _cmd_taokey(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "❌ Chỉ admin mới dùng được lệnh này!")
+            return
+        try:
+            days = int(arg.strip()) if arg.strip().isdigit() else 30
+        except ValueError:
+            days = 30
+        key = gen_key(days)
+        kd = self._key_data
+        if "keys" not in kd:
+            kd["keys"] = {}
+        kd["keys"][key] = {"days": days, "used": False, "uid": None,
+                           "created": time.time()}
+        save_keys(kd)
+        self._reply(snap, (
+            "✅ TẠO KEY THÀNH CÔNG!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  KEY: {key}\n"
+            f"  Gói: {days} ngày\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        ))
+
+    def _cmd_xoakey(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "❌ Chỉ admin mới dùng được lệnh này!")
+            return
+        key = arg.strip().upper()
+        kd = self._key_data
+        if key in kd.get("keys", {}):
+            del kd["keys"][key]
+            save_keys(kd)
+            self._reply(snap, f"✅ Đã xoá key: {key}")
+        else:
+            self._reply(snap, f"❌ Không tìm thấy key: {key}")
+
+    def _cmd_danhsachkey(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "❌ Chỉ admin mới dùng được lệnh này!")
+            return
+        kd = self._key_data
+        keys = kd.get("keys", {})
+        if not keys:
+            self._reply(snap, "📭 Chưa có key nào được tạo.")
+            return
+        lines = ["🔑 DANH SÁCH KEY\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"]
+        for k, info in list(keys.items())[:20]:
+            used = "✅ Dùng" if info.get("used") else "⏳ Chưa"
+            lines.append(f"  {k}  [{info.get('days',30)}d] {used}")
+        pending = kd.get("pending", {})
+        if pending:
+            lines.append(f"\n📥 Chờ xác nhận: {len(pending)} người")
+            for uid in list(pending.keys())[:5]:
+                lines.append(f"  UID: {uid}")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_xacnhan(self, snap: dict, arg: str) -> None:
+        """Admin xác nhận mua key: /xacnhan <uid> [ngày]"""
+        if not self._is_admin(snap):
+            self._reply(snap, "❌ Chỉ admin mới dùng được lệnh này!")
+            return
+        parts = arg.strip().split()
+        if not parts:
+            self._reply(snap, f"❌ Dùng: {self.prefix}xacnhan <uid> [ngày]")
+            return
+        target_uid = parts[0]
+        try:
+            days = int(parts[1]) if len(parts) > 1 else 30
+        except ValueError:
+            days = 30
+        key = gen_key(days)
+        kd = self._key_data
+        if "keys" not in kd:
+            kd["keys"] = {}
+        if "user_keys" not in kd:
+            kd["user_keys"] = {}
+        expires = time.time() + days * 86400
+        max_groups = _days_to_max_groups(days)
+        kd["keys"][key] = {"days": days, "used": True, "uid": target_uid,
+                           "created": time.time()}
+        old_uk = kd["user_keys"].get(target_uid, {})
+        kd["user_keys"][target_uid] = {
+            "key": key, "expires": expires, "days": days,
+            "max_groups": max_groups,
+            "groups": old_uk.get("groups", []),
+            "bot_name": old_uk.get("bot_name", ""),
+        }
+        kd.get("pending", {}).pop(target_uid, None)
+        save_keys(kd)
+        exp_str = datetime.fromtimestamp(expires).strftime("%d/%m/%Y %H:%M")
+        # Gửi key cho người mua qua DM
+        dm_ok = self._send_dm(target_uid, (
+            "🎉 THANH TOÁN THÀNH CÔNG!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  KEY của bạn:\n"
+            f"  {key}\n"
+            f"  Gói    : {days} ngày\n"
+            f"  Hết hạn: {exp_str}\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Nhập key: /nhapkey {key}\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        ))
+        self._reply(snap, (
+            f"✅ Đã xác nhận và gửi key cho UID {target_uid}\n"
+            f"  KEY: {key}  ({days} ngày)\n"
+            f"  DM: {'✅ Thành công' if dm_ok else '⚠️ Gửi DM thất bại — báo key thủ công'}"
+        ))
+
+    def _cmd_id(self, snap: dict, arg: str) -> None:
+        self._reply(snap, (
+            f"🆔 THÔNG TIN ID\n"
+            f"{DIVIDER}\n"
+            f"  Loại      : {'Nhóm' if snap.get('type') != 'user' else 'Người dùng'}\n"
+            f"  Thread ID : {snap.get('replyToID')}\n"
+            f"  User ID   : {snap.get('userID')}\n"
+            f"  Message ID: {snap.get('messageID')}\n"
+            f"  Thời gian : {datetime.now():%d/%m/%Y %H:%M:%S}"
+        ))
+
+    def _cmd_info(self, snap: dict, arg: str) -> None:
+        uid = self.dataFB.get("FacebookID")
+        uptime = format_uptime(time.time() - BOT_START_TIME)
+        admin_count = len(self.admins) if self.admins else "Tất cả"
+        self._reply(snap, (
+            f"🤖 THÔNG TIN BOT\n"
+            f"{DIVIDER}\n"
+            f"  UID Bot   : {uid}\n"
+            f"  Uptime    : {uptime}\n"
+            f"  Prefix    : '{self.prefix}'\n"
+            f"  Admins    : {admin_count}\n"
+            f"  Lệnh      : {len(self._handlers)}\n"
+            f"  Tin nhận  : {self._msg_count}\n"
+            f"  Framework : fbchat-v2\n"
+            f"  Tác giả   : MinhHuyDev\n"
+            f"  Build     : Python {sys.version.split()[0]}"
+        ))
+
+    def _cmd_uptime(self, snap: dict, arg: str) -> None:
+        uptime = format_uptime(time.time() - BOT_START_TIME)
+        since = datetime.fromtimestamp(BOT_START_TIME).strftime("%d/%m/%Y %H:%M")
+        self._reply(snap, (
+            f"⏱️ UPTIME BOT\n"
+            f"{DIVIDER}\n"
+            f"  Thời gian: {uptime}\n"
+            f"  Từ lúc  : {since}"
+        ))
+
+    def _cmd_userinfo(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}userinfo <userID>")
+            return
+        uid = arg.strip().split()[0]
+        try:
+            info = _get_user_info.func(self.dataFB, uid)
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+            return
+        if info.get("err") == 0:
+            self._reply(snap, f"❌ Không tìm thấy user ID: {uid}")
+            return
+        gender = info.get("genderUser", "Không rõ")
+        fb_url = info.get("urlProfile", f"https://facebook.com/{uid}")
+        self._reply(snap, (
+            f"👤 THÔNG TIN NGƯỜI DÙNG\n"
+            f"{DIVIDER}\n"
+            f"  Tên       : {info.get('nameUser')}\n"
+            f"  First name: {info.get('firstName')}\n"
+            f"  Username  : @{info.get('Username') or 'Không có'}\n"
+            f"  UID       : {info.get('idUser')}\n"
+            f"  Giới tính : {gender}\n"
+            f"  Link      : {fb_url}"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 👥 QUẢN LÝ NHÓM
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_tengroup(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}tengroup <tên mới>")
+            return
+        thread_id = str(snap["replyToID"])
+        try:
+            result = _changeNameThread.func(self.dataFB, thread_id, arg)
+            if result.get("status") == "success":
+                self._reply(snap, f"✅ Đã đổi tên nhóm thành:\n📝 {arg}")
+            else:
+                self._reply(snap, f"❌ {result.get('message', 'Không đổi được tên nhóm.')}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_emoji(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}emoji <emoji>")
+            return
+        thread_id = str(snap["replyToID"])
+        emoji = arg.strip().split()[0]
+        try:
+            result = _changeEmoji.func(self.dataFB, thread_id, emoji)
+            if result.get("status") == "success":
+                self._reply(snap, f"✅ Đã đổi emoji nhóm thành: {emoji}")
+            else:
+                self._reply(snap, f"❌ {result.get('message', 'Không đổi được emoji.')}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_nick(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        parts = arg.split(maxsplit=1)
+        if len(parts) < 2:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}nick <userID> <biệt danh>")
+            return
+        uid, nickname = parts[0], parts[1]
+        thread_id = str(snap["replyToID"])
+        try:
+            result = _changeNickname.func(self.dataFB, thread_id, uid, nickname)
+            if result.get("status") == "success":
+                self._reply(snap, f"✅ Đã đổi biệt danh UID {uid}:\n📝 {nickname}")
+            else:
+                self._reply(snap, f"❌ {result.get('message', 'Không đổi được biệt danh.')}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_themadmin(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}themadmin <userID>")
+            return
+        uid = arg.strip().split()[0]
+        thread_id = str(snap["replyToID"])
+        try:
+            result = _addAdmin.func(self.dataFB, thread_id, uid, statusChoice=True)
+            if result.get("status") == "success":
+                self._reply(snap, f"✅ Đã thêm UID {uid} làm admin nhóm! 👑")
+            else:
+                self._reply(snap, f"❌ {result.get('message', 'Không thêm được admin.')}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_xoadmin(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}xoadmin <userID>")
+            return
+        uid = arg.strip().split()[0]
+        thread_id = str(snap["replyToID"])
+        try:
+            result = _addAdmin.func(self.dataFB, thread_id, uid, statusChoice=False)
+            if result.get("status") == "success":
+                self._reply(snap, f"✅ Đã bỏ quyền admin của UID {uid}.")
+            else:
+                self._reply(snap, f"❌ {result.get('message', 'Không bỏ được admin.')}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_tagall(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        thread_id = str(snap["replyToID"])
+        try:
+            data = _all_thread_data.func(self.dataFB)
+            members_info = _all_thread_data.features(
+                data.get("dataGet", "{}"),
+                thread_id,
+                "exportMemberListToJson",
+            )
+            if not isinstance(members_info, list):
+                self._reply(snap, "❌ Không lấy được danh sách thành viên.")
+                return
+
+            names = []
+            for item in members_info:
+                try:
+                    user = json.loads(item)
+                    for uid_key, udata in user.items():
+                        name = udata.get("nameFB", "").strip()
+                        if name:
+                            names.append(name)
+                except Exception:
+                    continue
+
+            if not names:
+                self._reply(snap, "❌ Không có thành viên nào để tag.")
+                return
+
+            note = f"📢 {arg}" if arg else f"📢 TAG TẤT CẢ ({len(names)} người)"
+            chunk_size = 20
+            for i in range(0, len(names), chunk_size):
+                batch = names[i:i + chunk_size]
+                msg = note + "\n" + "  ".join(f"@{n}" for n in batch)
+                self._send_plain(snap, msg)
+                time.sleep(0.6)
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_members(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        try:
+            data = _all_thread_data.func(self.dataFB)
+            members_info = _all_thread_data.features(
+                data.get("dataGet", "{}"),
+                thread_id,
+                "exportMemberListToJson",
+            )
+            if not isinstance(members_info, list):
+                self._reply(snap, "❌ Không lấy được danh sách thành viên.")
+                return
+
+            lines = [f"👥 THÀNH VIÊN NHÓM ({len(members_info)} người)\n{DIVIDER}"]
+            for i, item in enumerate(members_info[:30], 1):
+                try:
+                    user = json.loads(item)
+                    for uid_key, udata in user.items():
+                        name = udata.get("nameFB", "?")
+                        uid_val = udata.get("idFacebook", uid_key)
+                        role = " 👑" if uid_val in self.admins else ""
+                        lines.append(f"  {i:02d}. {name}{role}\n      UID: {uid_val}")
+                except Exception:
+                    continue
+
+            if len(members_info) > 30:
+                lines.append(f"\n  ... và {len(members_info) - 30} người khác")
+
+            self._reply(snap, "\n".join(lines))
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi: {e}")
+
+    def _cmd_announce(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}announce <nội dung>")
+            return
+        self._send_plain(snap, (
+            f"📣 ══════════════════════════ 📣\n"
+            f"             THÔNG BÁO QUAN TRỌNG\n"
+            f"📣 ══════════════════════════ 📣\n\n"
+            f"{arg}\n\n"
+            f"─────────────────────────────\n"
+            f"🕐 {datetime.now():%d/%m/%Y %H:%M}"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 🔧 CÔNG CỤ
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_spam(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        parts = arg.split(maxsplit=1)
+        if len(parts) < 2:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}spam <số lần> <nội dung>")
+            return
+        try:
+            count = min(int(parts[0]), 10)
+        except ValueError:
+            self._reply(snap, "❌ Số lần phải là số nguyên (tối đa 10).")
+            return
+        content = parts[1]
+        self._reply(snap, f"📤 Đang gửi {count} tin nhắn...")
+        for i in range(count):
+            self._send_plain(snap, f"[{i+1}/{count}] {content}")
+            time.sleep(0.5)
+
+    def _cmd_echo(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}echo <nội dung>")
+            return
+        self._reply(snap, f"🔁 {arg}")
+
+    def _cmd_react(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        emoji = arg.strip().split()[0] if arg.strip() else "👍"
+        mid = snap.get("messageID")
+        if not mid:
+            self._reply(snap, "❌ Không lấy được messageID.")
+            return
+        try:
+            react_message(self.dataFB, "add", mid, emoji)
+            log("react", f"Đã react {emoji} vào {mid}")
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi react: {e}")
+
+    def _cmd_unsend(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        thread_id = str(snap["replyToID"])
+        target = self._last_bot_message.get(thread_id)
+        if not target:
+            self._reply(snap, "ℹ️ Chưa có tin nào để thu hồi trong nhóm này.")
+            return
+        result = unsend_message(target, self.dataFB)
+        log("unsend", f"{target} → {result}")
+        self._last_bot_message.pop(thread_id, None)
+
+    def _cmd_search(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}search <từ khoá>")
+            return
+        try:
+            res = _search.func(self.dataFB, arg)
+        except Exception as e:
+            self._reply(snap, f"❌ Lỗi tìm kiếm: {e}")
+            return
+        users = res.get("searchResultsDict") if isinstance(res, dict) else None
+        if not users:
+            self._reply(snap, f"🔍 Không tìm thấy kết quả cho: {arg}")
+            return
+        lines = [f"🔍 KẾT QUẢ TÌM KIẾM: '{arg}'\n{DIVIDER}"]
+        for i, u in enumerate(users[:5], 1):
+            lines.append(f"  {i}. {u.get('name')}\n     UID: {u.get('id')}")
+        self._reply(snap, "\n".join(lines))
+
+    # ══════════════════════════════════════════════════════
+    # ⚙️ CÀI ĐẶT BOT
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_addadmin(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}addadmin <userID>")
+            return
+        uid = arg.strip().split()[0]
+        self.admins.add(uid)
+        self.cfg.setdefault("admins", [])
+        if uid not in self.cfg["admins"]:
+            self.cfg["admins"].append(uid)
+            save_config(self.cfg)
+        self._reply(snap, f"✅ Đã thêm UID {uid} làm admin bot! 👑")
+
+    def _cmd_removeadmin(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}removeadmin <userID>")
+            return
+        uid = arg.strip().split()[0]
+        self.admins.discard(uid)
+        cfg_admins = self.cfg.get("admins", [])
+        if uid in cfg_admins:
+            cfg_admins.remove(uid)
+            save_config(self.cfg)
+        self._reply(snap, f"✅ Đã xoá UID {uid} khỏi admin bot.")
+
+    def _cmd_adminlist(self, snap: dict, arg: str) -> None:
+        if not self.admins:
+            self._reply(snap, "ℹ️ Chưa có admin bot nào — mọi người đều dùng được tất cả lệnh.")
+            return
+        lines = [f"👑 DANH SÁCH ADMIN BOT ({len(self.admins)} người)\n{DIVIDER}"]
+        for i, uid in enumerate(sorted(self.admins), 1):
+            lines.append(f"  {i}. UID: {uid}")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_daten(self, snap: dict, arg: str) -> None:
+        """Đổi tên bot hiển thị trong /menu của nhóm này."""
+        thread_id = str(snap.get("replyToID", ""))
+        sender_id = str(snap.get("userID", ""))
+        name = arg.strip()
+        if not name:
+            self._reply(snap, "❌ Nhập tên bot!")
+            return
+        if len(name) > 30:
+            self._reply(snap, "❌ Tên quá dài (tối đa 30 ký tự)!")
+            return
+        # Xác định chủ nhóm (người đã đăng ký nhóm, hoặc chính người gửi nếu là admin)
+        kd = self._key_data
+        owner_uid = kd.get("group_owners", {}).get(thread_id) or sender_id
+        uk = kd.setdefault("user_keys", {}).get(owner_uid)
+        if not uk and sender_id not in self.admins:
+            self._reply(snap, "❌ Nhóm chưa có key kích hoạt!")
+            return
+        if uk is None:
+            uk = {}
+            kd["user_keys"][owner_uid] = uk
+        uk["bot_name"] = name
+        save_keys(kd)
+        self._reply(snap, (
+            f"✅ ĐÃ ĐỔI TÊN BOT!\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Tên mới: {name}\n"
+            f"  Gõ {self.prefix}menu để xem thay đổi!\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        ))
+
+    def _cmd_setjoinmsg(self, snap: dict, arg: str) -> None:
+        """Đặt tin nhắn chào khi bot vào nhóm. Hỗ trợ {bot_name} và {prefix}."""
+        thread_id = str(snap.get("replyToID", ""))
+        sender_id = str(snap.get("userID", ""))
+        kd = self._key_data
+        owner_uid = kd.get("group_owners", {}).get(thread_id) or sender_id
+
+        # Phải là chủ nhóm hoặc admin
+        if owner_uid != sender_id and sender_id not in self.admins:
+            self._reply(snap, "❌ Chỉ chủ nhóm (người đăng ký key) hoặc admin mới dùng được!")
+            return
+
+        uk = kd.setdefault("user_keys", {}).get(owner_uid)
+        if not uk and sender_id not in self.admins:
+            self._reply(snap, "❌ Nhóm chưa có key kích hoạt!")
+            return
+
+        text = arg.strip()
+        if not text:
+            # Xem tin chào hiện tại
+            current = (uk or {}).get("join_message", "").strip() if uk else ""
+            if current:
+                self._reply(snap, (
+                    f"📢 TIN CHÀO HIỆN TẠI:\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"{current}\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"  Dùng {self.prefix}setjoinmsg reset để xoá về mặc định\n"
+                    f"  Dùng {self.prefix}setjoinmsg <nội dung> để đổi"
+                ))
+            else:
+                self._reply(snap, (
+                    f"📢 HƯỚNG DẪN ĐẶT TIN CHÀO:\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"  {self.prefix}setjoinmsg <nội dung>\n"
+                    f"  Biến hỗ trợ: {{bot_name}} {{prefix}}\n"
+                    f"  Ví dụ: {self.prefix}setjoinmsg Chào! Bot {{bot_name}} đã vào nhóm!\n"
+                    f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                ))
+            return
+
+        if text.lower() == "reset":
+            if uk:
+                uk.pop("join_message", None)
+                save_keys(kd)
+            # Xoá nhóm khỏi announced để bot gửi lại tin chào mặc định lần tới (nếu muốn)
+            self._reply(snap, "✅ Đã xoá tin chào tùy chỉnh. Bot sẽ dùng tin chào mặc định!")
+            return
+
+        if len(text) > 500:
+            self._reply(snap, "❌ Tin chào quá dài (tối đa 500 ký tự)!")
+            return
+
+        if uk is None:
+            uk = {}
+            kd["user_keys"][owner_uid] = uk
+        uk["join_message"] = text
+        save_keys(kd)
+
+        p = self.prefix
+        bot_name = self._get_bot_name(thread_id)
+        preview = text.replace("{bot_name}", bot_name).replace("{prefix}", p)
+        self._reply(snap, (
+            f"✅ ĐÃ ĐẶT TIN CHÀO BOT!\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Xem trước:\n"
+            f"{preview}\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Tin này sẽ hiển thị khi bot vào nhóm mới!"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 👥 QUẢN LÝ ADMIN NHÓM (Key Owner only)
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_addgroupadmin(self, snap: dict, arg: str) -> None:
+        """Thêm admin nhóm (chỉ chủ nhóm/key owner)."""
+        thread_id = str(snap.get("replyToID", ""))
+        target_uid = arg.strip().split()[0] if arg.strip() else ""
+        if not target_uid:
+            self._reply(snap, f"❌ Dùng: {self.prefix}addgroupadmin <uid>")
+            return
+        kd = self._key_data
+        ga = kd.setdefault("group_admins", {}).setdefault(thread_id, [])
+        if target_uid in ga:
+            self._reply(snap, f"⚠️ UID {target_uid} đã là admin nhóm!")
+            return
+        ga.append(target_uid)
+        save_keys(kd)
+        self._reply(snap, (
+            f"✅ ĐÃ THÊM ADMIN NHÓM!\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  UID: {target_uid}\n"
+            f"  Họ có thể dùng: tagall, ban, warn,\n"
+            f"  announce, members, spam và các lệnh admin khác\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        ))
+
+    def _cmd_removegroupadmin(self, snap: dict, arg: str) -> None:
+        """Xoá admin nhóm (chỉ chủ nhóm/key owner)."""
+        thread_id = str(snap.get("replyToID", ""))
+        target_uid = arg.strip().split()[0] if arg.strip() else ""
+        if not target_uid:
+            self._reply(snap, f"❌ Dùng: {self.prefix}removegroupadmin <uid>")
+            return
+        kd = self._key_data
+        ga = kd.get("group_admins", {}).get(thread_id, [])
+        if target_uid not in ga:
+            self._reply(snap, f"❌ UID {target_uid} không phải admin nhóm!")
+            return
+        ga.remove(target_uid)
+        kd.setdefault("group_admins", {})[thread_id] = ga
+        save_keys(kd)
+        self._reply(snap, f"✅ Đã xoá admin nhóm UID: {target_uid}")
+
+    def _cmd_groupadminlist(self, snap: dict, arg: str) -> None:
+        """Xem danh sách admin nhóm."""
+        thread_id = str(snap.get("replyToID", ""))
+        kd = self._key_data
+        owner = kd.get("group_owners", {}).get(thread_id, "?")
+        ga = kd.get("group_admins", {}).get(thread_id, [])
+        lines = [
+            f"👑 PHÂN QUYỀN NHÓM\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"  Chủ nhóm (Key Owner):",
+            f"  → UID: {owner}",
+            f"\n  Admin nhóm ({len(ga)} người):",
+        ]
+        if ga:
+            for uid in ga:
+                lines.append(f"  → UID: {uid}")
+        else:
+            lines.append("  (Chưa có admin nhóm nào)")
+        lines += [
+            f"\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            f"  Thêm admin: {self.prefix}addgroupadmin <uid>",
+            f"  Xoá admin : {self.prefix}removegroupadmin <uid>",
+        ]
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_setprefix(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        new_prefix = arg.strip().split()[0] if arg.strip() else ""
+        if not new_prefix:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}setprefix <ký tự>")
+            return
+        old = self.prefix
+        self.prefix = new_prefix
+        self.cfg["prefix"] = new_prefix
+        save_config(self.cfg)
+        self._reply(snap, f"✅ Đã đổi prefix: '{old}' → '{new_prefix}'")
+
+    def _cmd_setrules(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}setrules <nội dung nội quy>")
+            return
+        self.cfg["rules"] = arg
+        save_config(self.cfg)
+        self._reply(snap, "✅ Đã cập nhật nội quy nhóm!")
+
+    def _cmd_setgreeting(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self.cfg["greeting"] = ""
+            save_config(self.cfg)
+            self._reply(snap, "✅ Đã tắt tin nhắn chào mừng.")
+            return
+        self.cfg["greeting"] = arg
+        save_config(self.cfg)
+        self._reply(snap, f"✅ Đã đặt tin chào:\n💬 {arg}")
+
+    def _cmd_blacklist(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}blacklist <userID>")
+            return
+        uid = arg.strip().split()[0]
+        self._blacklist.add(uid)
+        bl = self.cfg.setdefault("blacklist", [])
+        if uid not in bl:
+            bl.append(uid)
+            save_config(self.cfg)
+        self._reply(snap, f"🚫 Đã chặn UID {uid} khỏi bot.")
+
+    def _cmd_whitelist(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}whitelist <userID>")
+            return
+        uid = arg.strip().split()[0]
+        self._blacklist.discard(uid)
+        bl = self.cfg.get("blacklist", [])
+        if uid in bl:
+            bl.remove(uid)
+            save_config(self.cfg)
+        self._reply(snap, f"✅ Đã bỏ chặn UID {uid}.")
+
+    def _cmd_autoreply(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        status = arg.strip().lower()
+        if status in ("on", "bật", "1", "true"):
+            self.cfg["autoreply"] = True
+            save_config(self.cfg)
+            self._reply(snap, "✅ Đã BẬT chế độ tự động trả lời.")
+        elif status in ("off", "tắt", "0", "false"):
+            self.cfg["autoreply"] = False
+            save_config(self.cfg)
+            self._reply(snap, "✅ Đã TẮT chế độ tự động trả lời.")
+        else:
+            current = "BẬT" if self.cfg.get("autoreply") else "TẮT"
+            self._reply(snap, f"ℹ️ Trạng thái hiện tại: {current}\nDùng: {self.prefix}autoreply on/off")
+
+    # ══════════════════════════════════════════════════════
+    # 📜 KIỂM DUYỆT
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_rules(self, snap: dict, arg: str) -> None:
+        rules = self.cfg.get("rules", "").strip()
+        if not rules:
+            self._reply(snap, f"ℹ️ Chưa có nội quy. Admin dùng {self.prefix}setrules <nội dung>")
+            return
+        self._reply(snap, (
+            f"📜 NỘI QUY NHÓM\n"
+            f"{DIVIDER}\n"
+            f"{rules}\n"
+            f"{DIVIDER}\n"
+            f"📅 Vi phạm sẽ bị xử lý theo quy định!"
+        ))
+
+    def _cmd_warn(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        parts = arg.split(maxsplit=1)
+        if not parts:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}warn <userID> [lý do]")
+            return
+        uid = parts[0]
+        reason = parts[1] if len(parts) > 1 else "Không có lý do"
+        self._warn_list.setdefault(uid, [])
+        self._warn_list[uid].append(f"{datetime.now():%d/%m %H:%M} — {reason}")
+        count = len(self._warn_list[uid])
+        warn_bar = "🟡" * min(count, 3) + "🔴" * max(0, count - 3)
+        self._reply(snap, (
+            f"⚠️ CẢNH CÁO\n"
+            f"{DIVIDER}\n"
+            f"  UID    : {uid}\n"
+            f"  Lý do  : {reason}\n"
+            f"  Lần này: {count}\n"
+            f"  {warn_bar}\n"
+            f"{'  ⚠️ Cảnh cáo nghiêm trọng! Cân nhắc ban!' if count >= 3 else ''}"
+        ))
+
+    def _cmd_warnlist(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not self._warn_list:
+            self._reply(snap, "✅ Không có thành viên nào bị cảnh cáo.")
+            return
+        lines = [f"⚠️ DANH SÁCH CẢNH CÁO\n{DIVIDER}"]
+        for uid, warns in sorted(self._warn_list.items(), key=lambda x: -len(x[1])):
+            lines.append(f"\n  UID {uid} — {len(warns)} lần:")
+            for w in warns[-3:]:
+                lines.append(f"    • {w}")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_clearwarn(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}clearwarn <userID>")
+            return
+        uid = arg.strip().split()[0]
+        if uid in self._warn_list:
+            del self._warn_list[uid]
+            self._reply(snap, f"✅ Đã xoá toàn bộ cảnh cáo của UID {uid}.")
+        else:
+            self._reply(snap, f"ℹ️ UID {uid} chưa có cảnh cáo nào.")
+
+    def _cmd_ban(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        parts = arg.split(maxsplit=1)
+        if not parts:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}ban <userID> [lý do]")
+            return
+        uid = parts[0]
+        reason = parts[1] if len(parts) > 1 else "Vi phạm nội quy"
+        self._ban_set.add(uid)
+        self._blacklist.add(uid)
+        cfg_ban = self.cfg.setdefault("banlist", [])
+        if uid not in cfg_ban:
+            cfg_ban.append(uid)
+        bl = self.cfg.setdefault("blacklist", [])
+        if uid not in bl:
+            bl.append(uid)
+        save_config(self.cfg)
+        self._reply(snap, (
+            f"🔨 ĐÃ BAN\n"
+            f"{DIVIDER}\n"
+            f"  UID   : {uid}\n"
+            f"  Lý do : {reason}\n"
+            f"  Thời gian: {datetime.now():%d/%m/%Y %H:%M}\n"
+            f"  Người ban: UID {snap.get('userID')}"
+        ))
+
+    def _cmd_unban(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}unban <userID>")
+            return
+        uid = arg.strip().split()[0]
+        self._ban_set.discard(uid)
+        self._blacklist.discard(uid)
+        for key in ("banlist", "blacklist"):
+            lst = self.cfg.get(key, [])
+            if uid in lst:
+                lst.remove(uid)
+        save_config(self.cfg)
+        self._reply(snap, f"✅ Đã bỏ ban UID {uid}.")
+
+    def _cmd_banlist(self, snap: dict, arg: str) -> None:
+        if not self._is_admin(snap):
+            self._reply(snap, "⛔ Chỉ admin bot mới dùng được lệnh này.")
+            return
+        if not self._ban_set:
+            self._reply(snap, "✅ Không có ai bị ban.")
+            return
+        lines = [f"🔨 DANH SÁCH BAN ({len(self._ban_set)} người)\n{DIVIDER}"]
+        for i, uid in enumerate(sorted(self._ban_set), 1):
+            lines.append(f"  {i}. UID: {uid}")
+        self._reply(snap, "\n".join(lines))
+
+    # ══════════════════════════════════════════════════════
+    # 🎮 VUI CHƠI
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_tung(self, snap: dict, arg: str) -> None:
+        result = random.choice(["🌕 MẶT", "🌑 NGỬA"])
+        count = random.randint(1, 5)
+        flip_anim = "🪙" * count
+        self._reply(snap, (
+            f"🪙 TUNG ĐỒNG XU\n"
+            f"{DIVIDER}\n"
+            f"  {flip_anim} ...\n\n"
+            f"  Kết quả: {result}!"
+        ))
+
+    def _cmd_random(self, snap: dict, arg: str) -> None:
+        parts = arg.split()
+        try:
+            if len(parts) >= 2:
+                lo, hi = int(parts[0]), int(parts[1])
+            elif len(parts) == 1:
+                lo, hi = 1, int(parts[0])
+            else:
+                lo, hi = 1, 100
+            if lo > hi:
+                lo, hi = hi, lo
+            result = random.randint(lo, hi)
+            total = hi - lo + 1
+            pos = result - lo
+            pct = int((pos / total) * 10) if total > 1 else 5
+            bar = "█" * pct + "░" * (10 - pct)
+            self._reply(snap, (
+                f"🎲 SỐ NGẪU NHIÊN\n"
+                f"{DIVIDER}\n"
+                f"  Phạm vi: {lo} → {hi}\n"
+                f"  Kết quả: {result}\n"
+                f"  [{bar}]"
+            ))
+        except ValueError:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}random <min> <max>")
+
+    def _cmd_roll(self, snap: dict, arg: str) -> None:
+        if not arg:
+            arg = "1d6"
+        match = re.match(r"(\d+)d(\d+)", arg.lower().strip())
+        if not match:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}roll <NdM>  (ví dụ: 2d6, 1d20)")
+            return
+        n, m = int(match.group(1)), int(match.group(2))
+        n = min(n, 20)
+        m = max(m, 2)
+        rolls = [random.randint(1, m) for _ in range(n)]
+        total = sum(rolls)
+        roll_str = " + ".join(str(r) for r in rolls)
+        self._reply(snap, (
+            f"🎲 TUNG XÚC XẮC ({n}d{m})\n"
+            f"{DIVIDER}\n"
+            f"  Kết quả: {roll_str}\n"
+            f"  Tổng   : {total}\n"
+            f"  Min/Max: {min(rolls)} / {max(rolls)}"
+        ))
+
+    def _cmd_choose(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}choose <a>|<b>|<c>...")
+            return
+        choices = [c.strip() for c in arg.split("|") if c.strip()]
+        if len(choices) < 2:
+            self._reply(snap, "❌ Cần ít nhất 2 lựa chọn, ngăn cách bằng |")
+            return
+        picked = random.choice(choices)
+        lines = [f"🤔 CÂU HỎI KHÓ QUÁ...\n{DIVIDER}"]
+        for c in choices:
+            lines.append(f"  {'👉' if c == picked else '  '} {c}")
+        lines.append(f"\n✅ Tôi chọn: {picked}!")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_8ball(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}8ball <câu hỏi>")
+            return
+        r = random.random()
+        if r < 0.4:
+            answer = random.choice(BALL8_YES)
+        elif r < 0.7:
+            answer = random.choice(BALL8_NO)
+        else:
+            answer = random.choice(BALL8_MAYBE)
+        self._reply(snap, (
+            f"🔮 BÓI BÁT QUÁI\n"
+            f"{DIVIDER}\n"
+            f"  Câu hỏi: {arg}\n\n"
+            f"  {answer}"
+        ))
+
+    def _cmd_trivia(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        q, a = random.choice(TRIVIA_POOL)
+        _trivia_pending[thread_id] = {"answer": a, "question": q}
+        self._reply(snap, (
+            f"🧠 CÂU HỎI KIẾN THỨC\n"
+            f"{DIVIDER}\n"
+            f"  {q}\n\n"
+            f"  💬 Trả lời trong nhóm này!\n"
+            f"  ⏱️ (Gợi ý sẽ tự lộ sau khi trả lời)"
+        ))
+        # Tự xoá sau 60s nếu chưa trả lời
+        def expire():
+            time.sleep(60)
+            if thread_id in _trivia_pending and _trivia_pending[thread_id]["question"] == q:
+                del _trivia_pending[thread_id]
+        threading.Thread(target=expire, daemon=True).start()
+
+    def _cmd_rps(self, snap: dict, arg: str) -> None:
+        moves = {"kéo": "✂️ Kéo", "búa": "🪨 Búa", "bao": "🪣 Bao",
+                 "k": "✂️ Kéo", "b": "🪨 Búa", "ba": "🪣 Bao"}
+        user_move = arg.strip().lower()
+        if user_move not in moves:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}rps kéo/búa/bao")
+            return
+        bot_choice = random.choice(["kéo", "búa", "bao"])
+        user_display = moves[user_move]
+        bot_display = moves[bot_choice]
+
+        # Chuẩn hoá
+        um = user_move if user_move in ("kéo", "búa", "bao") else {"k": "kéo", "b": "búa", "ba": "bao"}[user_move]
+
+        win_map = {"kéo": "bao", "búa": "kéo", "bao": "búa"}
+        if um == bot_choice:
+            result = "🤝 HÒA!"
+        elif win_map[um] == bot_choice:
+            result = "🎉 BẠN THẮNG!"
+        else:
+            result = "🤖 BOT THẮNG!"
+
+        self._reply(snap, (
+            f"✊ OẲN TÙ TÌ\n"
+            f"{DIVIDER}\n"
+            f"  Bạn  : {user_display}\n"
+            f"  Bot  : {bot_display}\n"
+            f"  {DIVIDER}\n"
+            f"  {result}"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 🌤 TIỆN ÍCH
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_thoitiet(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}thoitiet <tên thành phố>")
+            return
+        city = urllib.parse.quote(arg.strip())
+        url = f"https://wttr.in/{city}?format=4&lang=vi"
+        data = http_get(url, timeout=10)
+        if data:
+            self._reply(snap, f"🌤 THỜI TIẾT: {arg}\n{DIVIDER}\n{data.strip()}")
+        else:
+            # Fallback format
+            url2 = f"https://wttr.in/{city}?format=%l:+%C+%t+%h+humidity&lang=vi"
+            data2 = http_get(url2, timeout=10)
+            if data2:
+                self._reply(snap, f"🌤 Thời tiết tại {arg}:\n{data2.strip()}")
+            else:
+                self._reply(snap, f"❌ Không lấy được thời tiết cho '{arg}'. Thử lại sau!")
+
+    def _cmd_dich(self, snap: dict, arg: str) -> None:
+        parts = arg.split(maxsplit=1)
+        if len(parts) < 2:
+            self._reply(snap, (
+                f"ℹ️ Cách dùng: {self.prefix}dich <ngôn ngữ> <văn bản>\n"
+                f"Ví dụ: {self.prefix}dich en Xin chào\n"
+                f"Mã ngôn ngữ: vi, en, ja, ko, zh, fr, de, es..."
+            ))
+            return
+        target_lang = parts[0].strip().lower()
+        text = parts[1].strip()
+        encoded = urllib.parse.quote(text)
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_lang}&dt=t&q={encoded}"
+        data = http_get(url, timeout=10)
+        if data:
+            try:
+                result_json = json.loads(data)
+                translated = "".join(part[0] for part in result_json[0] if part[0])
+                src_lang = result_json[2] if len(result_json) > 2 else "auto"
+                self._reply(snap, (
+                    f"🌐 DỊCH VĂN BẢN\n"
+                    f"{DIVIDER}\n"
+                    f"  Từ  : {src_lang} → {target_lang}\n"
+                    f"  Gốc : {text[:100]}\n"
+                    f"  Dịch: {translated}"
+                ))
+            except Exception:
+                self._reply(snap, "❌ Không dịch được. Thử lại sau!")
+        else:
+            self._reply(snap, "❌ Không kết nối được đến dịch vụ dịch thuật.")
+
+    def _cmd_tinhtoan(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}tinhtoan <biểu thức>\nVí dụ: {self.prefix}tinhtoan 2+2*3")
+            return
+        safe_chars = set("0123456789+-*/().^ %")
+        expr = arg.strip().replace("^", "**").replace(",", ".")
+        if not all(c in safe_chars or c.isspace() for c in expr):
+            self._reply(snap, "❌ Biểu thức không hợp lệ. Chỉ dùng số và + - * / ^ ( )")
+            return
+        try:
+            result = eval(expr, {"__builtins__": {}, "math": math}, {})
+            if isinstance(result, float):
+                result = round(result, 10)
+            self._reply(snap, (
+                f"🧮 MÁY TÍNH\n"
+                f"{DIVIDER}\n"
+                f"  Biểu thức: {arg}\n"
+                f"  Kết quả  : {result}"
+            ))
+        except ZeroDivisionError:
+            self._reply(snap, "❌ Lỗi: Chia cho 0!")
+        except Exception:
+            self._reply(snap, "❌ Biểu thức không hợp lệ.")
+
+    def _cmd_wiki(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}wiki <từ khoá>")
+            return
+        query = urllib.parse.quote(arg.strip())
+        url = f"https://vi.wikipedia.org/api/rest_v1/page/summary/{query}"
+        data = http_get(url, timeout=10)
+        if data:
+            try:
+                info = json.loads(data)
+                title = info.get("title", arg)
+                extract = info.get("extract", "Không có mô tả.")
+                extract = extract[:400] + ("..." if len(extract) > 400 else "")
+                page_url = info.get("content_urls", {}).get("desktop", {}).get("page", "")
+                self._reply(snap, (
+                    f"📖 WIKIPEDIA: {title}\n"
+                    f"{DIVIDER}\n"
+                    f"{extract}\n"
+                    f"{DIVIDER}\n"
+                    f"🔗 {page_url}"
+                ))
+            except Exception:
+                self._reply(snap, "❌ Không tìm thấy thông tin trên Wikipedia.")
+        else:
+            # Try English
+            url_en = f"https://en.wikipedia.org/api/rest_v1/page/summary/{query}"
+            data_en = http_get(url_en, timeout=10)
+            if data_en:
+                try:
+                    info = json.loads(data_en)
+                    extract = info.get("extract", "")[:400]
+                    self._reply(snap, f"📖 Wikipedia (EN): {info.get('title')}\n{DIVIDER}\n{extract}")
+                except Exception:
+                    self._reply(snap, "❌ Không tìm thấy trên Wikipedia.")
+            else:
+                self._reply(snap, "❌ Không tìm thấy trên Wikipedia.")
+
+    def _cmd_qr(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}qr <nội dung>\nVí dụ: {self.prefix}qr https://facebook.com")
+            return
+        # Dùng API online để tạo QR
+        encoded = urllib.parse.quote(arg.strip())
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded}"
+        sent = self._send_image_url(snap, qr_url, f"📷 Mã QR cho: {arg[:50]}")
+        if not sent:
+            self._reply(snap, (
+                f"📷 MÃ QR\n"
+                f"{DIVIDER}\n"
+                f"  Nội dung: {arg[:80]}\n"
+                f"  Link ảnh QR:\n"
+                f"  {qr_url}"
+            ))
+
+    def _cmd_base64(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}base64 <văn bản>")
+            return
+        encoded = base64.b64encode(arg.encode("utf-8")).decode()
+        self._reply(snap, (
+            f"🔐 MÃ HOÁ BASE64\n"
+            f"{DIVIDER}\n"
+            f"  Gốc : {arg[:60]}\n"
+            f"  B64 : {encoded}"
+        ))
+
+    def _cmd_decode64(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}decode64 <base64 string>")
+            return
+        try:
+            decoded = base64.b64decode(arg.strip()).decode("utf-8")
+            self._reply(snap, (
+                f"🔓 GIẢI MÃ BASE64\n"
+                f"{DIVIDER}\n"
+                f"  B64 : {arg[:60]}\n"
+                f"  Gốc : {decoded}"
+            ))
+        except Exception:
+            self._reply(snap, "❌ Chuỗi Base64 không hợp lệ.")
+
+    def _cmd_hash(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}hash <văn bản>")
+            return
+        text = arg.strip()
+        md5 = hashlib.md5(text.encode()).hexdigest()
+        sha256 = hashlib.sha256(text.encode()).hexdigest()
+        sha1 = hashlib.sha1(text.encode()).hexdigest()
+        self._reply(snap, (
+            f"#️⃣ BĂM (HASH)\n"
+            f"{DIVIDER}\n"
+            f"  Văn bản: {text[:50]}\n\n"
+            f"  MD5    : {md5}\n"
+            f"  SHA1   : {sha1}\n"
+            f"  SHA256 : {sha256}"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 🖼 ẢNH & VIDEO
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_genanh(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}genanh <mô tả bằng tiếng Anh hoặc tiếng Việt>")
+            return
+        self._reply(snap, f"🎨 Đang tạo ảnh AI cho: '{arg}'\n⏳ Chờ một chút...")
+        prompt_encoded = urllib.parse.quote(arg.strip())
+        seed = random.randint(1, 9999999)
+        img_url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?width=768&height=768&seed={seed}&nologo=true"
+        sent = self._send_image_url(snap, img_url, f"🖼 AI: {arg[:50]}")
+        if not sent:
+            self._reply(snap, (
+                f"🎨 ẢNH AI ĐÃ TẠO XONG!\n"
+                f"{DIVIDER}\n"
+                f"  Mô tả: {arg[:80]}\n"
+                f"  🔗 Link ảnh:\n"
+                f"  {img_url}"
+            ))
+
+    def _cmd_anh(self, snap: dict, arg: str) -> None:
+        keywords = arg.strip() if arg else "nature beautiful"
+        encoded = urllib.parse.quote(keywords)
+        seed = random.randint(1, 9999999)
+        img_url = f"https://source.unsplash.com/featured/800x600/?{encoded}"
+        # Fallback to Pollinations
+        poll_url = f"https://image.pollinations.ai/prompt/{encoded}+photo+realistic?width=800&height=600&seed={seed}&nologo=true"
+        sent = self._send_image_url(snap, poll_url, f"📸 {keywords}")
+        if not sent:
+            self._reply(snap, (
+                f"📸 ẢNH: {keywords}\n"
+                f"{DIVIDER}\n"
+                f"  🔗 {poll_url}"
+            ))
+
+    def _cmd_meme(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}meme <dòng 1>|<dòng 2>")
+            return
+        parts = arg.split("|", 1)
+        top = urllib.parse.quote(parts[0].strip())
+        bottom = urllib.parse.quote(parts[1].strip() if len(parts) > 1 else "")
+        meme_url = f"https://apimeme.com/meme?meme=Drake-Hotline-Bling&top={top}&bottom={bottom}"
+        alt_url = f"https://api.memegen.link/images/drake/{top}/{bottom}.png"
+        sent = self._send_image_url(snap, alt_url, f"😂 Meme: {arg[:40]}")
+        if not sent:
+            self._reply(snap, (
+                f"😂 MEME\n"
+                f"{DIVIDER}\n"
+                f"  🔗 Link meme:\n"
+                f"  {alt_url}"
+            ))
+
+    def _cmd_avatar(self, snap: dict, arg: str) -> None:
+        if not arg:
+            uid = str(snap.get("userID", ""))
+        else:
+            uid = arg.strip().split()[0]
+        if not uid:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}avatar <userID>")
+            return
+        avatar_url = f"https://graph.facebook.com/{uid}/picture?width=512&height=512&type=large"
+        sent = self._send_image_url(snap, avatar_url, f"👤 Avatar UID: {uid}")
+        if not sent:
+            self._reply(snap, (
+                f"👤 AVATAR\n"
+                f"{DIVIDER}\n"
+                f"  UID: {uid}\n"
+                f"  🔗 Link ảnh:\n"
+                f"  {avatar_url}"
+            ))
+
+    # ══════════════════════════════════════════════════════
+    # 🎵 ÂM NHẠC & VIDEO
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_nhac(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}nhac <tên bài hát>")
+            return
+        self._youtube_search(snap, arg + " official audio", kind="nhạc")
+
+    def _cmd_youtube(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}youtube <từ khoá>")
+            return
+        self._youtube_search(snap, arg, kind="video")
+
+    def _youtube_search(self, snap: dict, query: str, kind: str = "video") -> None:
+        encoded = urllib.parse.quote(query)
+        url = f"https://www.youtube.com/results?search_query={encoded}"
+        html = http_get(url, timeout=12)
+        if not html:
+            self._reply(snap, "❌ Không tìm kiếm được trên YouTube. Thử lại sau!")
+            return
+        # Trích video IDs từ HTML
+        ids = re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', html)
+        titles = re.findall(r'"title":\{"runs":\[{"text":"([^"]+)"', html)
+        channels = re.findall(r'"shortBylineText":\{"runs":\[{"text":"([^"]+)"', html)
+        durations = re.findall(r'"lengthText":\{"accessibility":\{"accessibilityData":\{"label":"[^"]+"\},"simpleText":"([^"]+)"', html)
+
+        if not ids:
+            self._reply(snap, f"❌ Không tìm thấy {kind} nào cho: {query}")
+            return
+
+        icon = "🎵" if kind == "nhạc" else "▶️"
+        lines = [f"{icon} KẾT QUẢ {kind.upper()}: '{query}'\n{DIVIDER}"]
+        shown = 0
+        for i, vid_id in enumerate(ids[:10]):
+            if shown >= 5:
+                break
+            title = titles[i] if i < len(titles) else "Không rõ"
+            channel = channels[i] if i < len(channels) else ""
+            duration = durations[i] if i < len(durations) else ""
+            link = f"https://youtu.be/{vid_id}"
+            lines.append(
+                f"\n  {shown+1}. {title}\n"
+                f"     👤 {channel}  ⏱️ {duration}\n"
+                f"     🔗 {link}"
+            )
+            shown += 1
+
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_videoinfo(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}videoinfo <link YouTube>")
+            return
+        link = arg.strip()
+        vid_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", link)
+        if not vid_match:
+            self._reply(snap, "❌ Link YouTube không hợp lệ.")
+            return
+        vid_id = vid_match.group(1)
+        oembed_url = f"https://www.youtube.com/oembed?url=https://youtu.be/{vid_id}&format=json"
+        data = http_get(oembed_url, timeout=10)
+        if data:
+            try:
+                info = json.loads(data)
+                self._reply(snap, (
+                    f"▶️ THÔNG TIN VIDEO\n"
+                    f"{DIVIDER}\n"
+                    f"  Tiêu đề : {info.get('title', 'N/A')}\n"
+                    f"  Kênh    : {info.get('author_name', 'N/A')}\n"
+                    f"  Link    : https://youtu.be/{vid_id}\n"
+                    f"  Thumbnail: {info.get('thumbnail_url', 'N/A')}"
+                ))
+            except Exception:
+                self._reply(snap, f"❌ Không lấy được thông tin video.")
+        else:
+            self._reply(snap, f"❌ Không lấy được thông tin video: {link}")
+
+    def _cmd_lyric(self, snap: dict, arg: str) -> None:
+        if not arg:
+            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}lyric <tên bài hát>")
+            return
+        encoded = urllib.parse.quote(arg.strip())
+        url = f"https://api.lyrics.ovh/suggest/{encoded}"
+        data = http_get(url, timeout=10)
+        if data:
+            try:
+                info = json.loads(data)
+                results = info.get("data", [])
+                if not results:
+                    raise ValueError("empty")
+                song = results[0]
+                artist = song.get("artist", {}).get("name", "?")
+                title = song.get("title", "?")
+                # Lấy lời từ lyrics.ovh
+                lyric_url = f"https://api.lyrics.ovh/v1/{urllib.parse.quote(artist)}/{urllib.parse.quote(title)}"
+                lyric_data = http_get(lyric_url, timeout=10)
+                if lyric_data:
+                    lyr = json.loads(lyric_data)
+                    lyrics = lyr.get("lyrics", "")[:600]
+                    self._reply(snap, (
+                        f"🎵 LỜI BÀI HÁT\n"
+                        f"{DIVIDER}\n"
+                        f"  Bài  : {title}\n"
+                        f"  Ca sĩ: {artist}\n"
+                        f"{DIVIDER}\n"
+                        f"{lyrics}{'...' if len(lyr.get('lyrics',''))>600 else ''}"
+                    ))
+                else:
+                    self._reply(snap, f"✅ Tìm thấy bài: {title} — {artist}\n❌ Không lấy được lời bài hát.")
+            except Exception:
+                self._reply(snap, f"❌ Không tìm thấy lời bài hát '{arg}'. Thử lại với tên chính xác hơn!")
+        else:
+            self._reply(snap, "❌ Không kết nối được đến dịch vụ lời nhạc.")
+
+    # ══════════════════════════════════════════════════════
+    # 📊 THỐNG KÊ
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_stats(self, snap: dict, arg: str) -> None:
+        uptime = format_uptime(time.time() - BOT_START_TIME)
+        warn_total = sum(len(v) for v in self._warn_list.values())
+        thread_id = str(snap.get("replyToID", ""))
+        sender_id = str(snap.get("userID", ""))
+
+        # Thông tin key của người dùng
+        kd = self._key_data
+        uk = kd.get("user_keys", {}).get(sender_id, {})
+        has_key = bool(uk) and time.time() < uk.get("expires", 0)
+        if has_key:
+            key_code = uk.get("key", "?")
+            expires_ts = uk.get("expires", 0)
+            days_left = max(0, int((expires_ts - time.time()) / 86400))
+            groups_used = len(uk.get("groups", []))
+            max_groups = uk.get("max_groups", 1)
+            exp_str = datetime.fromtimestamp(expires_ts).strftime("%d/%m/%Y")
+            key_block = (
+                f"  🔑 Key     : {key_code}\n"
+                f"  📅 Hết hạn: {exp_str}  ({days_left} ngày còn lại)\n"
+                f"  👥 Nhóm   : {groups_used}/{max_groups} nhóm đã dùng"
+            )
+        else:
+            key_block = f"  🔐 Key     : Chưa kích hoạt\n  Gõ {self.prefix}nhapkey <KEY> để kích hoạt"
+
+        # Admin nhóm
+        is_owner = self._is_key_owner(thread_id, sender_id)
+        is_gadmin = self._is_group_admin(thread_id, sender_id)
+        if is_owner:
+            role = "👑 Chủ nhóm"
+        elif is_gadmin:
+            role = "🛡️ Admin nhóm"
+        elif sender_id in self.admins:
+            role = "⭐ Super-Admin"
+        elif has_key:
+            role = "✅ Thành viên có key"
+        else:
+            role = "❌ Chưa có key"
+
+        ga_count = len(kd.get("group_admins", {}).get(thread_id, []))
+
+        self._reply(snap, (
+            f"📊 THỐNG KÊ BOT\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  🏷️  Vai trò   : {role}\n"
+            f"{key_block}\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  ⏱️  Uptime    : {uptime}\n"
+            f"  📩 Tin nhận  : {self._msg_count}\n"
+            f"  ⚠️  Cảnh cáo  : {warn_total} người\n"
+            f"  🔨 Bị ban    : {len(self._ban_set)} người\n"
+            f"  🛡️  Admin nhóm: {ga_count} người\n"
+            f"  🤖 Prefix    : '{self.prefix}'\n"
+            f"  🔄 Auto reply: {'BẬT' if self.cfg.get('autoreply') else 'TẮT'}"
+        ))
+
+    def _cmd_topwarn(self, snap: dict, arg: str) -> None:
+        if not self._warn_list:
+            self._reply(snap, "✅ Chưa có ai bị cảnh cáo!")
+            return
+        sorted_warns = sorted(self._warn_list.items(), key=lambda x: -len(x[1]))[:10]
+        lines = [f"🏆 TOP CẢNH CÁO\n{DIVIDER}"]
+        medals = ["🥇", "🥈", "🥉"] + ["4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        for i, (uid, warns) in enumerate(sorted_warns):
+            bar = "🟡" * min(len(warns), 5)
+            lines.append(f"  {medals[i]} UID {uid}: {len(warns)} lần {bar}")
+        self._reply(snap, "\n".join(lines))
+
+
+# ─── PRIVATE MESSAGE BOT (E2EE) ──────────────────────────────────
+
+class PrivateMsgBot:
+    """Xử lý tin nhắn riêng 1-1 qua E2EE bridge.
+    Chạy trong thread riêng song song với GroupBot.
+    """
+
+    BINARY_PATH = str(Path(__file__).resolve().parents[1] / "build" / "fbchat-bridge-e2ee")
+
+    def __init__(self, dataFB: dict, prefix: str = "/", admins: list | None = None,
+                 cfg: dict | None = None) -> None:
+        self.dataFB   = dataFB
+        self.prefix   = prefix
+        self.admins   = set(map(str, admins or []))
+        self.cfg      = cfg or {}
+        self._listener: listeningE2EEEvent | None = None
+        self._admin_sessions: set[str] = set()  # UIDs đã mở khóa admin panel
+
+    # ── helpers ──────────────────────────────────────────────────
+
+    def _key_valid(self, uid: str) -> bool:
+        if uid in self.admins:
+            return True
+        kd = load_keys()
+        uk = kd.get("user_keys", {}).get(uid)
+        return bool(uk) and time.time() < uk.get("expires", 0)
+
+    def _reply(self, chat_jid: str, text: str, msg_id: str = "", sender_jid: str = "") -> None:
+        if self._listener is None:
+            return
+        try:
+            self._listener.send_e2ee_message(
+                chat_jid, text,
+                reply_to_id=msg_id,
+                reply_to_sender_jid=sender_jid,
+            )
+            log("send", f"E2EE → {chat_jid}: {text[:60]!r}")
+        except Exception as exc:
+            log("err", f"E2EE reply lỗi: {exc}")
+
+    # ── key commands ─────────────────────────────────────────────
+
+    def _do_nhapkey(self, uid: str, key_str: str, reply) -> None:
+        key = key_str.strip().upper()
+        if not key:
+            reply(f"❌ Dùng: {self.prefix}nhapkey <KEY>")
+            return
+        kd = load_keys()
+        if key not in kd.get("keys", {}):
+            reply("❌ Key không tồn tại hoặc đã bị xoá!")
+            return
+        k_info = kd["keys"][key]
+        if k_info.get("used") and k_info.get("uid") != uid:
+            reply("❌ Key này đã được dùng bởi người khác!")
+            return
+        days = k_info.get("days", 30)
+        expires = time.time() + days * 86400
+        max_groups = _days_to_max_groups(days)
+        kd["keys"][key] = {**k_info, "used": True, "uid": uid}
+        old_uk = kd.get("user_keys", {}).get(uid, {})
+        kd.setdefault("user_keys", {})[uid] = {
+            "key": key, "expires": expires, "days": days,
+            "max_groups": max_groups,
+            "groups": old_uk.get("groups", []),
+            "bot_name": old_uk.get("bot_name", ""),
+        }
+        save_keys(kd)
+        exp_str = datetime.fromtimestamp(expires).strftime("%d/%m/%Y %H:%M")
+        reply(
+            "✅ KEY KÍCH HOẠT THÀNH CÔNG!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Key    : {key}\n"
+            f"  Gói    : {days} ngày\n"
+            f"  Nhóm   : {max_groups} nhóm\n"
+            f"  Hết hạn: {exp_str}\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Vào nhóm gõ {self.prefix}menu để dùng bot!\n"
+            f"  Đổi tên bot: {self.prefix}daten <tên>"
+        )
+
+    def _do_muakey(self, uid: str, reply) -> None:
+        bank      = self.cfg.get("bank_info", {})
+        bank_name  = bank.get("name",      "BIDV")
+        bank_stk   = bank.get("stk",       "1234567890")
+        bank_owner = bank.get("owner",     "ADMIN HARU88")
+        price_30   = bank.get("price_30",  "50.000đ")
+        price_90   = bank.get("price_90",  "120.000đ")
+        price_365  = bank.get("price_365", "400.000đ")
+        kd = load_keys()
+        kd.setdefault("pending", {})[uid] = {"ts": time.time()}
+        save_keys(kd)
+        reply(
+            "🛒 MUA KEY BOT\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  GÓI 30  ngày : {price_30}  (1 nhóm)\n"
+            f"  GÓI 90  ngày : {price_90}  (3 nhóm)\n"
+            f"  GÓI 365 ngày : {price_365}  (∞ nhóm)\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            "  THÔNG TIN CHUYỂN KHOẢN\n"
+            f"  Ngân hàng: {bank_name}\n"
+            f"  STK      : {bank_stk}\n"
+            f"  Chủ TK   : {bank_owner}\n"
+            f"  Nội dung : HARU88 {uid}\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            "  Sau khi CK admin sẽ xác nhận\n"
+            "  và gửi KEY về đây cho bạn!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        )
+
+    SECRET_CODE = "minhthu11112011"
+
+    def _do_taokey(self, arg: str, reply) -> None:
+        parts = arg.strip().split()
+        if len(parts) < 2:
+            reply("❌ Sai lệnh!")
+            return
+        try:
+            days = int(parts[0])
+            if days <= 0:
+                raise ValueError
+        except ValueError:
+            reply("❌ Số ngày không hợp lệ!")
+            return
+        code = parts[1]
+        if code != self.SECRET_CODE:
+            reply("❌ Mã bảo mật không đúng!")
+            return
+        key = gen_key(days)
+        kd = load_keys()
+        kd.setdefault("keys", {})[key] = {"days": days, "used": False, "uid": None,
+                                           "created": time.time()}
+        save_keys(kd)
+        reply(
+            "✅ TẠO KEY THÀNH CÔNG!\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  KEY: {key}\n"
+            f"  Gói: {days} ngày\n"
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+        )
+
+    def _do_xoakey(self, arg: str, reply) -> None:
+        key = arg.strip().upper()
+        kd = load_keys()
+        if key in kd.get("keys", {}):
+            del kd["keys"][key]
+            save_keys(kd)
+            reply(f"✅ Đã xoá key: {key}")
+        else:
+            reply(f"❌ Không tìm thấy key: {key}")
+
+    def _do_danhsachkey(self, reply) -> None:
+        kd = load_keys()
+        keys = kd.get("keys", {})
+        if not keys:
+            reply("📭 Chưa có key nào được tạo.")
+            return
+        lines = ["🔑 DANH SÁCH KEY\n▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"]
+        for k, info in list(keys.items())[:20]:
+            used = "✅ Dùng" if info.get("used") else "⏳ Chưa"
+            lines.append(f"  {k}  [{info.get('days',30)}d] {used}")
+        pending = kd.get("pending", {})
+        if pending:
+            lines.append(f"\n📥 Chờ xác nhận: {len(pending)} người")
+            for uid in list(pending.keys())[:5]:
+                lines.append(f"  UID: {uid}")
+        reply("\n".join(lines))
+
+    def _do_xacnhan(self, arg: str, reply, admin_chat_jid: str, admin_sender_jid: str) -> None:
+        parts = arg.strip().split()
+        if not parts:
+            reply(f"❌ Dùng: {self.prefix}xacnhan <uid> [ngày]")
+            return
+        target_uid = parts[0]
+        try:
+            days = int(parts[1]) if len(parts) > 1 else 30
+        except ValueError:
+            days = 30
+        key = gen_key(days)
+        expires = time.time() + days * 86400
+        kd = load_keys()
+        max_groups = _days_to_max_groups(days)
+        kd.setdefault("keys", {})[key] = {"days": days, "used": True, "uid": target_uid,
+                                           "created": time.time()}
+        old_uk = kd.get("user_keys", {}).get(target_uid, {})
+        kd.setdefault("user_keys", {})[target_uid] = {
+            "key": key, "expires": expires, "days": days,
+            "max_groups": max_groups,
+            "groups": old_uk.get("groups", []),
+            "bot_name": old_uk.get("bot_name", ""),
+        }
+        kd.get("pending", {}).pop(target_uid, None)
+        save_keys(kd)
+        exp_str = datetime.fromtimestamp(expires).strftime("%d/%m/%Y %H:%M")
+        key_msg = (
+            f"🎉 KEY CỦA BẠN ĐÃ ĐƯỢC KÍCH HOẠT!\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  KEY    : {key}\n"
+            f"  Gói    : {days} ngày\n"
+            f"  Nhóm   : {max_groups} nhóm\n"
+            f"  Hết hạn: {exp_str}\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  Vào nhóm gõ {self.prefix}nhapkey {key} để kích hoạt!\n"
+            f"  Đổi tên bot: {self.prefix}daten <tên>"
+        )
+        # Try to send key to user via E2EE (they must have chatted with bot)
+        if self._listener:
+            try:
+                self._listener.send_e2ee_message(target_uid, key_msg)
+                log("send", f"Đã gửi key E2EE → UID {target_uid}")
+            except Exception as exc:
+                log("err", f"Không gửi được key E2EE cho {target_uid}: {exc}")
+        reply(
+            f"✅ XÁC NHẬN THÀNH CÔNG\n"
+            f"▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+            f"  UID    : {target_uid}\n"
+            f"  KEY    : {key}\n"
+            f"  Gói    : {days} ngày\n"
+            f"  Hết hạn: {exp_str}\n"
+            f"  ✉️ Đã gửi KEY qua tin nhắn riêng cho user!"
+        )
+
+    # ── event handler ─────────────────────────────────────────────
+
+    def _handle_event(self, evt: dict) -> None:
+        etype = evt.get("type")
+        if etype not in ("message", "e2eeMessage"):
+            return
+
+        data = evt.get("data") or {}
+        body_text = (data.get("text") or "").strip()
+        sender_id = str(data.get("senderId", ""))
+        msg_id    = data.get("id", "")
+        chat_jid  = data.get("chatJid") or str(data.get("threadId", ""))
+        sender_jid = data.get("senderJid", "")
+
+        my_uid = str(self.dataFB.get("FacebookID", ""))
+        if sender_id == my_uid:
+            return
+
+        # Chỉ xử lý tin riêng 1-1 (type == e2eeMessage)
+        if etype != "e2eeMessage":
+            return
+
+        if not body_text or not body_text.startswith(self.prefix):
+            # Auto welcome nếu không có lệnh
+            if body_text and not body_text.startswith(self.prefix):
+                def r(t): self._reply(chat_jid, t, msg_id, sender_jid)
+                r(
+                    f"👋 Xin chào! Tôi là bot Haru88.\n"
+                    f"Gõ {self.prefix}muakey để mua key\n"
+                    f"Gõ {self.prefix}nhapkey <KEY> để kích hoạt"
+                )
+            return
+
+        without_prefix = body_text[len(self.prefix):].strip()
+        if not without_prefix:
+            return
+        parts = without_prefix.split(maxsplit=1)
+        cmd = parts[0].lower()
+        arg = parts[1] if len(parts) > 1 else ""
+
+        def reply(text): self._reply(chat_jid, text, msg_id, sender_jid)
+
+        is_admin = sender_id in self.admins
+
+        if cmd == "ping":
+            reply("🏓 PONG! Bot đang hoạt động!")
+        elif cmd in ("nhapkey", "key"):
+            self._do_nhapkey(sender_id, arg, reply)
+        elif cmd in ("muakey", "mua"):
+            self._do_muakey(sender_id, reply)
+        elif cmd in ("info", "help", "menu"):
+            kd = load_keys()
+            uk = kd.get("user_keys", {}).get(sender_id, {})
+            has_key = bool(uk) and time.time() < uk.get("expires", 0)
+            bot_name = uk.get("bot_name", "") or "HARU88"
+            groups_used = len(uk.get("groups", []))
+            max_g = uk.get("max_groups", 1) if has_key else 0
+            key_line = f"✅ Còn hạn — {groups_used}/{max_g} nhóm | Tên: {bot_name}" if has_key else "🔐 Chưa có key"
+            reply(
+                "🤖 BOT — TIN NHẮN RIÊNG\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                f"  Key : {key_line}\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                f"  {self.prefix}muakey        — Xem thông tin mua key\n"
+                f"  {self.prefix}nhapkey KEY   — Kích hoạt key\n"
+                f"  {self.prefix}daten <tên>   — Đổi tên bot trong nhóm\n"
+                f"  {self.prefix}ping          — Kiểm tra bot\n"
+                "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                "  Dùng lệnh trong NHÓM sau khi có key!"
+            )
+        elif cmd == "daten":
+            if not self._key_valid(sender_id):
+                reply("❌ Bạn chưa có key!")
+            else:
+                name = arg.strip()
+                if not name:
+                    reply("❌ Nhập tên bot!")
+                elif len(name) > 30:
+                    reply("❌ Tên quá dài!")
+                else:
+                    kd = load_keys()
+                    uk = kd.setdefault("user_keys", {}).setdefault(sender_id, {})
+                    uk["bot_name"] = name
+                    save_keys(kd)
+                    reply(f"✅ Đã đổi tên bot thành: {name}\n  Menu nhóm sẽ hiển thị tên này!")
+        elif cmd == "admin":
+            # /admin <mã> → mở khóa admin panel
+            ADMIN_CODE = "11112011"
+            if arg.strip() == ADMIN_CODE:
+                self._admin_sessions.add(sender_id)
+                p = self.prefix
+                reply(
+                    "🔓 ADMIN PANEL ĐÃ MỞ!\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"  {p}taokey <ngày>      — Tạo key mới\n"
+                    f"  {p}xoakey <KEY>       — Xoá key\n"
+                    f"  {p}danhsachkey        — Xem tất cả key\n"
+                    f"  {p}xacnhan <uid> [n]  — Xác nhận mua key\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    "  ⚠️ Phiên này chỉ tồn tại trong session hiện tại!"
+                )
+            else:
+                reply("❌ Mã bảo mật không đúng!")
+        elif cmd == "taokey":
+            if sender_id not in self._admin_sessions and sender_id not in self.admins:
+                reply(f"🔒 Cần mở khóa admin trước!\n  Gõ: {self.prefix}admin <mã>")
+            else:
+                self._do_taokey(arg, reply)
+        elif cmd == "xoakey":
+            if sender_id not in self._admin_sessions and sender_id not in self.admins:
+                reply(f"🔒 Cần mở khóa admin trước!\n  Gõ: {self.prefix}admin <mã>")
+            else:
+                self._do_xoakey(arg, reply)
+        elif cmd == "danhsachkey":
+            if sender_id not in self._admin_sessions and sender_id not in self.admins:
+                reply(f"🔒 Cần mở khóa admin trước!\n  Gõ: {self.prefix}admin <mã>")
+            else:
+                self._do_danhsachkey(reply)
+        elif cmd == "xacnhan":
+            if sender_id not in self._admin_sessions and sender_id not in self.admins:
+                reply(f"🔒 Cần mở khóa admin trước!\n  Gõ: {self.prefix}admin <mã>")
+            else:
+                self._do_xacnhan(arg, reply, chat_jid, sender_jid)
+        else:
+            if not self._key_valid(sender_id):
+                reply(
+                    "🔐 BẠN CHƯA CÓ KEY!\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n"
+                    f"  Nhập key: {self.prefix}nhapkey <KEY>\n"
+                    f"  Mua key : {self.prefix}muakey\n"
+                    "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
+                )
+
+    def run(self) -> None:
+        log("boot", "Khởi động E2EE listener cho tin nhắn riêng (1-1)...")
+        try:
+            self._listener = listeningE2EEEvent(
+                self.dataFB,
+                binary_path=self.BINARY_PATH,
+                e2ee_memory_only=True,
+            )
+
+            @self._listener.on_message
+            def handle(evt: dict) -> None:
+                try:
+                    self._handle_event(evt)
+                except Exception as exc:
+                    log("err", f"PrivateMsgBot error: {exc}")
+
+            self._listener.connect_mqtt()
+        except Exception as exc:
+            log("err", f"PrivateMsgBot crashed: {exc}")
+
+
+# ─── ENTRY POINT ─────────────────────────────────────────────────
+
+def main() -> None:
+    print("╔══════════════════════════════════════════╗")
+    print("║   🤖 FACEBOOK GROUP BOT — fbchat-v2      ║")
+    print("╚══════════════════════════════════════════╝")
+
+    cfg = load_config()
+
+    log("boot", "Đang khởi tạo dataFB từ cookie…")
+    dataFB = dataGetHome(cfg["cookies"])
+
+    if not is_valid_datafb(dataFB):
+        log("boot", "❌ Không lấy được dataFB hợp lệ — cookie có thể đã hết hạn.")
+        sys.exit(1)
+
+    log("boot", f"✅ Đã xác thực thành công! UID = {dataFB.get('FacebookID')}")
+
+    # Khởi động PrivateMsgBot (E2EE tin nhắn riêng) trong thread riêng
+    private_bot = PrivateMsgBot(
+        dataFB,
+        prefix=cfg.get("prefix", "/"),
+        admins=cfg.get("admins", []),
+        cfg=cfg,
+    )
+    t_private = threading.Thread(
+        target=private_bot.run,
+        name="private-e2ee-bot",
+        daemon=True,
+    )
+    t_private.start()
+    log("boot", "✅ PrivateMsgBot (E2EE) đã khởi động trong thread riêng")
+
+    bot = GroupBot(
+        dataFB,
+        prefix=cfg.get("prefix", "/"),
+        admins=cfg.get("admins", []),
+        cfg=cfg,
+    )
+    bot.run()
+
+
+if __name__ == "__main__":
+    main()
