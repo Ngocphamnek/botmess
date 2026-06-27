@@ -1,0 +1,42 @@
+| #   | Tính năng                                     |
+| --- | --------------------------------------------- |
+| 61  | Hồ sơ người dùng                              |
+| 62  | Hồ sơ nhóm                                    |
+| 63  | Level                                         |
+| 64  | EXP                                           |
+| 65  | Coin                                          |
+| 66  | Danh hiệu                                     |
+| 67  | Điểm uy tín                                   |
+| 68  | Điểm hoạt động                                |
+| 69  | Điểm danh hằng ngày                           |
+| 70  | Nhiệm vụ hằng ngày                            |
+| 71  | Nhiệm vụ tuần                                 |
+| 72  | Thành tựu                                     |
+| 73  | Huy hiệu                                      |
+| 74  | Khung avatar                                  |
+| 75  | Avatar động (nếu nền tảng hỗ trợ)             |
+| 76  | Nickname riêng trong hệ thống                 |
+| 77  | Tiểu sử                                       |
+| 78  | Ngày tham gia                                 |
+| 79  | Thời gian online                              |
+| 80  | Thống kê tin nhắn                             |
+| 81  | Top hoạt động                                 |
+| 82  | Top level                                     |
+| 83  | Top coin                                      |
+| 84  | Top donate                                    |
+| 85  | Top mời thành viên                            |
+| 86  | Top cảnh cáo                                  |
+| 87  | Top admin                                     |
+| 88  | Top spam                                      |
+| 89  | Top tương tác                                 |
+| 90  | Lịch sử đổi tên                               |
+| 91  | Lịch sử vi phạm                               |
+| 92  | Lịch sử giao dịch                             |
+| 93  | Lịch sử đăng nhập                             |
+| 94  | Lịch sử thiết bị                              |
+| 95  | Quản lý nhiều tài khoản liên kết (nếu hỗ trợ) |
+| 96  | Hệ thống giới thiệu bạn bè                    |
+| 97  | Thưởng giới thiệu                             |
+| 98  | Mã mời (Referral Code)                        |
+| 99  | Kiểm tra trạng thái tài khoản                 |
+| 100 | Xuất dữ liệu hồ sơ người dùng                 |
