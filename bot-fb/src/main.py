@@ -138,6 +138,7 @@ from _messaging._reactions import func as react_message
 from _messaging._listening import listeningEvent
 from _messaging._listening_e2ee import listeningE2EEEvent
 from ff_checker import check_ff, format_profile, normalize_region
+from lq_checker import check_lq, format_lq_profile, format_lq_results, normalize_server, search_lq_by_nickname
 
 
 CONFIG_PATH = HERE / "config.json"
@@ -473,6 +474,8 @@ class GroupBot:
             "userinfo", "search", "echo",
             # Free Fire — public
             "ff",
+            # Liên Quân — public
+            "lq",
         }
 
         # Lệnh DM: dùng được trong tin nhắn riêng (không cần nhóm)
@@ -638,6 +641,8 @@ class GroupBot:
             "welcome":          self._cmd_welcome,
             # Free Fire API
             "ff":               self._cmd_ff,
+            # Liên Quân Mobile
+            "lq":               self._cmd_lq,
             # AI — full quyền, không cần key, DM + nhóm
             "ai":               self._cmd_ai,
             "gpt":              self._cmd_ai,
@@ -1530,7 +1535,7 @@ class GroupBot:
         ("3️⃣",  "🎮 Vui chơi (DM+Nhóm)",   ["tung","random","roll","choose","8ball","trivia","rps"]),
         ("4️⃣",  "🌤 Tiện ích (DM+Nhóm)",   ["thoitiet","dich","tinhtoan","wiki","qr","base64","decode64","hash"]),
         ("5️⃣",  "🖼 Ảnh & Nhạc (DM+Nhóm)", ["genanh","anh","meme","avatar","nhac","youtube","videoinfo","lyric"]),
-        ("6️⃣",  "🎮 Free Fire (DM+Nhóm)",  ["ff"]),
+        ("6️⃣",  "🎮 Game (DM+Nhóm)",  ["ff", "lq"]),
         ("7️⃣",  "🛡 Group Admin (Nhóm)",   ["warn","clearwarn","ban","unban","banlist","tagall","announce","spam","themtv","xoatv","stats","rules"]),
         ("8️⃣",  "👑 Key Owner (Nhóm+DM)",  ["thongtinnhom","chunhom","chuyennhom","daten","setjoinmsg","addgroupadmin","removegroupadmin","setprefix","setrules","antilink","antispam"]),
         ("9️⃣",  "🛠 Bot Admin (DM+Nhóm)",  ["createkey","revokekey","checkuser","checkgroup","taokey","xoakey","danhsachkey","xacnhan","addbotadmin","removebotadmin"]),
@@ -1599,16 +1604,21 @@ class GroupBot:
              "lyric <tên bài>    — Lời bài hát"]
         ),
         "6": (
-            "🎮 FREE FIRE — DM + Nhóm, không cần key",
-            ["ff <uid>           — Thông tin người chơi FF",
-             "ff <uid> <server>  — Chỉ định server",
+            "🎮 GAME — DM + Nhóm, không cần key",
+            ["ff <uid>           — Thông tin người chơi Free Fire",
+             "ff <uid> <server>  — Chỉ định server FF",
              "",
-             "Server hỗ trợ:",
-             "  VN IND SG ID TH BR BD RU TW US ME PK CIS",
+             "lq <tên>           — Tìm tài khoản Liên Quân theo tên",
+             "lq <uid>           — Xem chi tiết tài khoản Liên Quân",
+             "lq <tên> <server>  — Chỉ định server LQ",
+             "",
+             "Server LQ hỗ trợ:",
+             "  VN SG TH ID TW MY PH LA MM KR NA EU",
              "",
              "Ví dụ:",
-             "  /ff 2579249340",
-             "  /ff 2579249340 SG"]
+             "  /lq NguyenVanA",
+             "  /lq 123456789",
+             "  /lq NguyenVanA sg"]
         ),
         "7": (
             "🛡 GROUP ADMIN — Chỉ nhóm, cần được Key Owner cấp quyền",
@@ -3974,6 +3984,75 @@ class GroupBot:
             return
         self._reply(snap, format_profile(uid, data))
 
+    # ══════════════════════════════════════════════════════
+    # ⚔️ LIÊN QUÂN MOBILE
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_lq(self, snap: dict, arg: str) -> None:
+        """Tra cứu tài khoản Liên Quân Mobile: /lq <tên|uid> [server]"""
+        parts = arg.strip().split()
+        if not parts:
+            self._reply(snap, (
+                f"ℹ️ Cách dùng:\n"
+                f"  {self.prefix}lq <tên ingame>      — Tìm theo nickname\n"
+                f"  {self.prefix}lq <uid>             — Tra theo UID\n"
+                f"  {self.prefix}lq <tên> <server>    — Chỉ định server\n"
+                f"\n"
+                f"Server hỗ trợ: vn sg th id tw my ph la mm kr na eu\n"
+                f"\n"
+                f"Ví dụ:\n"
+                f"  {self.prefix}lq NguyenVanA\n"
+                f"  {self.prefix}lq 123456789\n"
+                f"  {self.prefix}lq NguyenVanA sg"
+            ))
+            return
+
+        # Nếu phần cuối là mã server thì tách ra
+        _known_servers = {"vn","sg","th","id","tw","my","ph","la","mm","kr","na","eu"}
+        if len(parts) >= 2 and parts[-1].lower() in _known_servers:
+            server = normalize_server(parts[-1])
+            keyword = " ".join(parts[:-1])
+        else:
+            server = "vn"
+            keyword = " ".join(parts)
+
+        self._reply(snap, f"⚔️ Đang tra cứu «{keyword}» (server: {server.upper()})...")
+
+        # Nếu là số → tìm theo UID trực tiếp
+        if keyword.isdigit():
+            data = check_lq(keyword, server)
+            if data is None:
+                self._reply(snap, (
+                    f"❌ Không tìm thấy UID {keyword} (server: {server.upper()})\n"
+                    f"  Kiểm tra lại UID hoặc thử server khác."
+                ))
+                return
+            self._reply(snap, format_lq_profile(keyword, data))
+            return
+
+        # Tìm theo nickname — trả về danh sách nếu nhiều kết quả
+        results = search_lq_by_nickname(keyword, server)
+        if not results:
+            self._reply(snap, (
+                f"❌ Không tìm thấy tài khoản «{keyword}» (server: {server.upper()})\n"
+                f"  Thử kiểm tra lại tên ingame hoặc đổi server."
+            ))
+            return
+
+        if len(results) == 1:
+            self._reply(snap, format_lq_profile(keyword, results[0]))
+        else:
+            # Ưu tiên tên khớp chính xác
+            kw_lower = keyword.lower()
+            exact = next(
+                (p for p in results
+                 if (p.get("name") or p.get("nickname") or "").lower() == kw_lower),
+                None
+            )
+            if exact:
+                self._reply(snap, format_lq_profile(keyword, exact))
+            else:
+                self._reply(snap, format_lq_results(results[:5]))
 
     # ══════════════════════════════════════════════════════
     # 🛡 QUẢN LÝ NHÓM NÂNG CAO

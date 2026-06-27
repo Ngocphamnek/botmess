@@ -1,0 +1,118 @@
+I. CORE SYSTEM (1–20)
+#	Tính năng
+1	Đăng nhập bằng Cookie Facebook
+2	Đăng nhập nhiều tài khoản
+3	Tự động gia hạn phiên đăng nhập
+4	Quản lý nhiều bot cùng lúc
+5	Hệ thống cấu hình bằng JSON/YAML
+6	Tự động cập nhật cấu hình không cần khởi động lại
+7	Hệ thống plugin
+8	Tự động tải plugin
+9	Bật/tắt plugin theo nhóm
+10	Hệ thống phân quyền
+11	Quản lý vai trò (Role)
+12	Tiền tố lệnh tùy chỉnh (ví dụ !, /, .)
+13	Lệnh slash hoặc tiền tố văn bản (tùy nền tảng hỗ trợ)
+14	Hệ thống ghi log
+15	Log lỗi chi tiết
+16	Log hoạt động người dùng
+17	Thống kê hiệu năng bot
+18	Khởi động lại bot từ lệnh
+19	Kiểm tra trạng thái bot (health check)
+20	Sao lưu và khôi phục cấu hình
+II. GROUP MANAGEMENT (21–60)
+#	Tính năng
+21	Ban thành viên
+22	Kick thành viên
+23	Mute thành viên
+24	Unmute
+25	Warn
+26	Xóa cảnh cáo
+27	Danh sách cảnh cáo
+28	Tag toàn bộ
+29	Đổi tên nhóm
+30	Đổi ảnh nhóm
+31	Đổi emoji nhóm
+32	Khóa chat
+33	Mở khóa chat
+34	Chỉ admin được nhắn
+35	Anti Spam
+36	Anti Link
+37	Anti Invite
+38	Anti Mention Spam
+39	Anti Emoji Spam
+40	Anti Sticker Spam
+41	Anti Flood
+42	Anti Fake Account
+43	Anti Bot
+44	Anti Scam Keyword
+45	Anti Caps Lock
+46	Anti NSFW
+47	Lọc từ cấm
+48	Whitelist từ khóa
+49	Blacklist từ khóa
+50	Auto Delete Message
+51	Tự động thu hồi tin nhắn vi phạm
+52	Nhật ký chỉnh sửa nhóm
+53	Nhật ký thành viên vào nhóm
+54	Nhật ký thành viên rời nhóm
+55	Nhật ký admin
+56	Thông báo chào mừng
+57	Thông báo tạm biệt
+58	Thông báo đổi tên nhóm
+59	Thông báo đổi ảnh nhóm
+60	Thông báo ghim tin
+III. MEMBER SYSTEM (61–100)
+#	Tính năng
+61	Hồ sơ người dùng
+62	Hồ sơ nhóm
+63	Level
+64	EXP
+65	Coin
+66	Danh hiệu
+67	Điểm uy tín
+68	Điểm hoạt động
+69	Điểm danh hằng ngày
+70	Nhiệm vụ hằng ngày
+71	Nhiệm vụ tuần
+72	Thành tựu
+73	Huy hiệu
+74	Khung avatar
+75	Avatar động (nếu nền tảng hỗ trợ)
+76	Nickname riêng trong hệ thống
+77	Tiểu sử
+78	Ngày tham gia
+79	Thời gian online
+80	Thống kê tin nhắn
+81	Top hoạt động
+82	Top level
+83	Top coin
+84	Top donate
+85	Top mời thành viên
+86	Top cảnh cáo
+87	Top admin
+88	Top spam
+89	Top tương tác
+90	Lịch sử đổi tên
+91	Lịch sử vi phạm
+92	Lịch sử giao dịch
+93	Lịch sử đăng nhập
+94	Lịch sử thiết bị
+95	Quản lý nhiều tài khoản liên kết (nếu hỗ trợ)
+96	Hệ thống giới thiệu bạn bè
+97	Thưởng giới thiệu
+98	Mã mời (Referral Code)
+99	Kiểm tra trạng thái tài khoản
+100	Xuất dữ liệu hồ sơ người dùng
+Sau 100 tính năng đầu tiên
+
+Các phần tiếp theo sẽ mở rộng sang những mảng lớn hơn:
+
+101–160: AI (chat, dịch, tóm tắt, tạo ảnh, hỗ trợ quản trị, kiểm duyệt nội dung...)
+161–240: Shop, kho đồ, sản phẩm số, đơn hàng, mã giảm giá, quà tặng.
+241–300: Ví tiền, nạp/rút, thanh toán (Momo, ngân hàng, crypto...), hóa đơn, lịch sử giao dịch.
+301–380: Game (Tài Xỉu, Chẵn Lẻ, Slot, Bầu Cua, nhiệm vụ, sự kiện, bảng xếp hạng...).
+381–440: Dashboard, API, Webhook, báo cáo, thống kê, tích hợp dịch vụ.
+441–500: Công cụ dành cho Developer, hệ thống plugin, tự động hóa, sao lưu, giám sát và bảo mật.
+
+Với cấu trúc này, dự án sẽ có khoảng 300–400 lệnh và 500 tính năng được tổ chức thành các module rõ ràng, thuận tiện cho việc phát triển và mở rộng.
