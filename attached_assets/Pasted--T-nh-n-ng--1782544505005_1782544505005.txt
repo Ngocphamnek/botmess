@@ -1,0 +1,102 @@
+|   # | Tính năng                                        |
+| --: | ------------------------------------------------ |
+| 301 | Đố vui kiến thức                                 |
+| 302 | Đố vui Toán học                                  |
+| 303 | Đố vui Tiếng Anh                                 |
+| 304 | Đố vui Địa lý                                    |
+| 305 | Đố vui Lịch sử                                   |
+| 306 | Đố vui Khoa học                                  |
+| 307 | Đố vui Công nghệ                                 |
+| 308 | Đoán quốc kỳ                                     |
+| 309 | Đoán logo thương hiệu                            |
+| 310 | Đoán bài hát                                     |
+| 311 | Đoán ca sĩ                                       |
+| 312 | Đoán phim                                        |
+| 313 | Đoán nhân vật                                    |
+| 314 | Đoán emoji                                       |
+| 315 | Đoán từ                                          |
+| 316 | Ghép chữ                                         |
+| 317 | Tìm từ trong ma trận                             |
+| 318 | Hangman (đoán chữ)                               |
+| 319 | Sudoku hằng ngày                                 |
+| 320 | Cờ Caro (PvP)                                    |
+| 321 | Cờ Vua (PvP)                                     |
+| 322 | Cờ Tướng (PvP)                                   |
+| 323 | Othello/Reversi                                  |
+| 324 | Kéo–Búa–Bao                                      |
+| 325 | Blackjack luyện tập (không cá cược)              |
+| 326 | UNO (phiên bản bot)                              |
+| 327 | 2048                                             |
+| 328 | Mê cung (Maze)                                   |
+| 329 | Memory Card (lật thẻ)                            |
+| 330 | Simon Says (ghi nhớ chuỗi)                       |
+| 331 | Typing Race (gõ nhanh)                           |
+| 332 | Speed Quiz                                       |
+| 333 | Giải mật mã                                      |
+| 334 | Giải Rubik theo bước (hướng dẫn)                 |
+| 335 | Ô chữ                                            |
+| 336 | Word Chain (nối từ)                              |
+| 337 | Đố mẹo                                           |
+| 338 | Ai là triệu phú (phiên bản bot)                  |
+| 339 | Chiếc nón kỳ diệu (phiên bản bot)                |
+| 340 | Mini Escape Room                                 |
+| 341 | Nuôi thú ảo                                      |
+| 342 | Trồng cây ảo                                     |
+| 343 | Nông trại mini                                   |
+| 344 | Xây thành phố mini                               |
+| 345 | Thu thập huy hiệu                                |
+| 346 | Nhiệm vụ hằng ngày                               |
+| 347 | Nhiệm vụ tuần                                    |
+| 348 | Sự kiện theo mùa                                 |
+| 349 | Bảng xếp hạng điểm                               |
+| 350 | Thành tích cá nhân                               |
+| 351 | Hệ thống cấp độ game                             |
+| 352 | Kho vật phẩm trang trí                           |
+| 353 | Đổi avatar khung bằng điểm                       |
+| 354 | Đổi danh hiệu bằng điểm                          |
+| 355 | Thử thách nhóm                                   |
+| 356 | Thử thách bạn bè                                 |
+| 357 | Điểm danh nhận quà                               |
+| 358 | Vòng quay thưởng miễn phí (không dùng tiền thật) |
+| 359 | Săn kho báu bằng câu đố                          |
+| 360 | Sưu tập bộ thẻ                                   |
+| 361 | Đua điểm kinh nghiệm                             |
+| 362 | Giải đấu cờ                                      |
+| 363 | Giải đấu đố vui                                  |
+| 364 | Giải đấu gõ phím                                 |
+| 365 | Hệ thống mùa giải                                |
+| 366 | Hệ thống xếp hạng ELO                            |
+| 367 | Phần thưởng theo thành tích                      |
+| 368 | Hệ thống bạn bè                                  |
+| 369 | Gửi quà bằng điểm                                |
+| 370 | Trao đổi vật phẩm (không dùng tiền thật)         |
+| 371 | Tạo phòng chơi riêng                             |
+| 372 | Mời bạn vào phòng                                |
+| 373 | Khán giả theo dõi trận đấu                       |
+| 374 | Lưu lịch sử trận đấu                             |
+| 375 | Phát lại kết quả                                 |
+| 376 | Thống kê tỷ lệ thắng                             |
+| 377 | Hồ sơ game                                       |
+| 378 | Bộ sưu tập thành tích                            |
+| 379 | Nhiệm vụ AI tạo ngẫu nhiên                       |
+| 380 | Mini game theo sự kiện                           |
+| 381 | Game tương tác trong nhóm                        |
+| 382 | Game theo đội                                    |
+| 383 | Thử thách tốc độ trả lời                         |
+| 384 | Thử thách ghi nhớ                                |
+| 385 | Đố vui theo chủ đề                               |
+| 386 | Game giáo dục trẻ em                             |
+| 387 | Game học ngoại ngữ                               |
+| 388 | Game lập trình cơ bản                            |
+| 389 | Game nhận diện hình ảnh                          |
+| 390 | Game ghép cặp                                    |
+| 391 | Game đo phản xạ                                  |
+| 392 | Game tìm điểm khác nhau                          |
+| 393 | Game giải mã ký hiệu                             |
+| 394 | Game sắp xếp logic                               |
+| 395 | Game chiến thuật theo lượt đơn giản              |
+| 396 | Thử thách cuối tuần                              |
+| 397 | Sự kiện cộng đồng                                |
+| 398 | Huy hiệu sự kiện                                 |
+| 399 | Quà thưởng thành tích                            |
+| 400 | Trung tâm trò chơi và bảng xếp hạng              |
