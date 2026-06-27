@@ -285,6 +285,64 @@ TRIVIA_POOL = [
 ]
 _trivia_pending: dict[str, dict] = {}
 
+# ─── GAME STATE (Hangman / Nối từ / Đoán emoji / Speed Quiz / Typing) ────────
+_hangman_state:  dict[str, dict] = {}   # thread_id → game
+_noitu_state:    dict[str, dict] = {}   # thread_id → {last_word, used}
+_emoji_state:    dict[str, dict] = {}   # thread_id → {answer, hint}
+_speedquiz_state:dict[str, dict] = {}   # thread_id → {answer, ts}
+_typing_state:   dict[str, dict] = {}   # thread_id → {sentence, ts}
+
+_HANGMAN_WORDS = [
+    "python","facebook","messenger","chatbot","unicode","keyboard","internet",
+    "algorithm","database","security","password","vietnam","language","program",
+    "developer","network","software","hardware","machine","learning","computer",
+]
+
+_NOITU_USED: dict[str, set] = {}   # thread_id → set of used words
+
+_EMOJI_POOL = [
+    ("🌍🌊🐠", "đại dương"), ("🌞🌈☁️", "thời tiết"), ("📱💻🖥️", "thiết bị"),
+    ("🍕🍔🍟", "đồ ăn nhanh"), ("⚽🏀🎾", "thể thao"), ("🎵🎸🥁", "âm nhạc"),
+    ("✈️🚀🛸", "phương tiện bay"), ("🐶🐱🐭", "thú cưng"), ("🌹🌷🌸", "hoa"),
+    ("📚✏️🎒", "học sinh"), ("🏖️🌴☀️", "biển"), ("🎃👻🕸️", "halloween"),
+    ("❤️💛💚", "màu sắc"), ("🍎🍊🍋", "trái cây"), ("🔥💧🌬️", "yếu tố"),
+    ("👑💎💰", "giàu có"), ("🌙⭐🌟", "bầu trời đêm"), ("🎂🕯️🎉", "sinh nhật"),
+    ("🦁🐯🐻", "thú dữ"), ("🍦🍧🍨", "kem"),
+]
+
+_SPEEDQUIZ_POOL = [
+    ("Thủ đô của Pháp là gì?", "paris"),
+    ("1 + 1 = ?", "2"), ("2 × 8 = ?", "16"), ("100 ÷ 4 = ?", "25"),
+    ("Năm nào Việt Nam thống nhất?", "1975"),
+    ("Con gì kêu 'ộp ộp'?", "ếch"),
+    ("Màu của bầu trời?", "xanh"),
+    ("Hành tinh gần Mặt Trời nhất?", "sao thủy"),
+    ("Loài chim nào không bay được?", "đà điểu"),
+    ("H2O là gì?", "nước"),
+    ("Nước nào đông dân nhất thế giới?", "ấn độ"),
+    ("Thủ đô Việt Nam là gì?", "hà nội"),
+    ("12 × 12 = ?", "144"), ("7 × 7 = ?", "49"),
+    ("Con gì có vòi dài?", "voi"),
+    ("Bầu trời màu gì vào ban đêm?", "đen"),
+    ("Cá sống ở đâu?", "nước"),
+    ("Mặt Trời mọc ở hướng nào?", "đông"),
+    ("1 năm có bao nhiêu tháng?", "12"),
+    ("Tam giác có mấy cạnh?", "3"),
+]
+
+_TYPING_SENTENCES = [
+    "Lập trình là nghệ thuật giải quyết vấn đề bằng code",
+    "Bot Facebook giúp quản lý nhóm hiệu quả hơn",
+    "Python là ngôn ngữ lập trình dễ học và mạnh mẽ",
+    "Messenger là ứng dụng nhắn tin phổ biến nhất Việt Nam",
+    "Học lập trình mỗi ngày một chút sẽ tiến bộ rất nhanh",
+    "Trí tuệ nhân tạo đang thay đổi thế giới từng ngày",
+    "Kỹ năng giao tiếp quan trọng không kém kỹ năng kỹ thuật",
+    "Mỗi dòng code là một bước tiến đến mục tiêu",
+    "Sáng tạo và kiên trì là chìa khóa thành công",
+    "Công nghệ kết nối mọi người trên toàn thế giới",
+]
+
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
@@ -469,6 +527,7 @@ class GroupBot:
             "thoitiet", "dich", "tinhtoan", "wiki",
             "qr", "base64", "decode64", "hash",
             "tung", "random", "roll", "choose", "8ball", "rps", "trivia",
+            "hangman", "noitu", "doanemoji", "speedquiz", "typing",
             "genanh", "anh", "meme", "avatar",
             "nhac", "youtube", "videoinfo", "lyric",
             "userinfo", "search", "echo",
@@ -607,6 +666,11 @@ class GroupBot:
             "8ball":            self._cmd_8ball,
             "trivia":           self._cmd_trivia,
             "rps":              self._cmd_rps,
+            "hangman":          self._cmd_hangman,
+            "noitu":            self._cmd_noitu,
+            "doanemoji":        self._cmd_doanemoji,
+            "speedquiz":        self._cmd_speedquiz,
+            "typing":           self._cmd_typing,
             # Tiện ích (member)
             "thoitiet":         self._cmd_thoitiet,
             "dich":             self._cmd_dich,
@@ -1532,7 +1596,7 @@ class GroupBot:
     _MENU_CATS = [
         ("1️⃣",  "📋 Công cộng (DM+Nhóm)",  ["ping","id","info","uptime","nhapkey","muakey","checkkey","nhom","giahan"]),
         ("2️⃣",  "🤖 AI Chat (DM+Nhóm)",    ["ai","gpt","ask"]),
-        ("3️⃣",  "🎮 Vui chơi (DM+Nhóm)",   ["tung","random","roll","choose","8ball","trivia","rps"]),
+        ("3️⃣",  "🎮 Vui chơi (DM+Nhóm)",   ["tung","random","roll","choose","8ball","trivia","rps","hangman","noitu","doanemoji","speedquiz","typing"]),
         ("4️⃣",  "🌤 Tiện ích (DM+Nhóm)",   ["thoitiet","dich","tinhtoan","wiki","qr","base64","decode64","hash"]),
         ("5️⃣",  "🖼 Ảnh & Nhạc (DM+Nhóm)", ["genanh","anh","meme","avatar","nhac","youtube","videoinfo","lyric"]),
         ("6️⃣",  "🎮 Game (DM+Nhóm)",  ["ff", "lq"]),
@@ -3268,6 +3332,303 @@ class GroupBot:
             f"  Bot  : {bot_display}\n"
             f"  {DIVIDER}\n"
             f"  {result}"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 🎯 GAMES MỚI: HANGMAN / NỐI TỪ / ĐOÁN EMOJI / SPEED QUIZ / TYPING
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_hangman(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        inp = arg.strip().lower()
+
+        # Lệnh /hangman → bắt đầu game mới
+        if not inp:
+            word = random.choice(_HANGMAN_WORDS)
+            guessed: set[str] = set()
+            wrong: list[str] = []
+            _hangman_state[thread_id] = {"word": word, "guessed": guessed, "wrong": wrong}
+            display = " ".join("_" if c not in guessed else c for c in word)
+            self._reply(snap, (
+                f"💀 HANGMAN\n{DIVIDER}\n"
+                f"  Từ: {display}  ({len(word)} chữ cái)\n"
+                f"  Sai: (chưa có)  |  0/6 lượt\n\n"
+                f"  Gõ {self.prefix}hangman <chữ cái> để đoán\n"
+                f"  Gõ {self.prefix}hangman stop để dừng"
+            ))
+            return
+
+        if inp == "stop":
+            if thread_id in _hangman_state:
+                w = _hangman_state.pop(thread_id)["word"]
+                self._reply(snap, f"💀 Đã dừng game. Đáp án là: {w.upper()}")
+            else:
+                self._reply(snap, "ℹ️ Không có game đang chạy. Gõ /hangman để bắt đầu.")
+            return
+
+        if thread_id not in _hangman_state:
+            self._reply(snap, f"ℹ️ Chưa có game. Gõ {self.prefix}hangman để bắt đầu.")
+            return
+
+        state = _hangman_state[thread_id]
+        word    = state["word"]
+        guessed = state["guessed"]
+        wrong   = state["wrong"]
+
+        if len(inp) == 1:
+            letter = inp
+        elif inp == word:
+            del _hangman_state[thread_id]
+            self._reply(snap, f"🎉 ĐÚNG! Bạn đoán cả từ: {word.upper()}\nHangman chiến thắng! 🏆")
+            return
+        else:
+            self._reply(snap, "ℹ️ Đoán từng chữ cái hoặc cả từ.")
+            return
+
+        if letter in guessed or letter in wrong:
+            self._reply(snap, f"⚠️ Bạn đã đoán '{letter.upper()}' rồi!")
+            return
+
+        if letter in word:
+            guessed.add(letter)
+            display = " ".join(letter if letter in guessed else "_" for letter in word)
+            if all(c in guessed for c in word):
+                del _hangman_state[thread_id]
+                self._reply(snap, f"🎉 CHÚC MỪNG! Đáp án đúng: {word.upper()} 🏆")
+            else:
+                self._reply(snap, (
+                    f"💀 HANGMAN\n{DIVIDER}\n"
+                    f"  Từ: {display}\n"
+                    f"  ✅ '{letter.upper()}' đúng!\n"
+                    f"  Sai: {', '.join(w.upper() for w in wrong) or 'chưa có'}  |  {len(wrong)}/6 lượt"
+                ))
+        else:
+            wrong.append(letter)
+            display = " ".join(c if c in guessed else "_" for c in word)
+            _HANG = ["  ", " O ", " O\n |", " O\n/|", " O\n/|\\", " O\n/|\\\n/", " O\n/|\\\n/ \\"]
+            if len(wrong) >= 6:
+                del _hangman_state[thread_id]
+                self._reply(snap, (
+                    f"💀 GAME OVER! Bạn đã thua.\n{DIVIDER}\n"
+                    f"  Đáp án: {word.upper()}\n"
+                    f"  Sai: {', '.join(w.upper() for w in wrong)}"
+                ))
+            else:
+                self._reply(snap, (
+                    f"💀 HANGMAN\n{DIVIDER}\n"
+                    f"  Từ: {display}\n"
+                    f"  ❌ '{letter.upper()}' sai!\n"
+                    f"  Sai: {', '.join(w.upper() for w in wrong)}  |  {len(wrong)}/6 lượt"
+                ))
+
+    def _cmd_noitu(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        inp = arg.strip().lower()
+
+        if not inp:
+            if thread_id in _noitu_state:
+                st = _noitu_state[thread_id]
+                self._reply(snap, (
+                    f"🔗 NỐI TỪ đang chạy!\n{DIVIDER}\n"
+                    f"  Từ cuối: {st['last_word']}\n"
+                    f"  Đã dùng: {len(st['used'])} từ\n"
+                    f"  Gõ {self.prefix}noitu <từ> để chơi | {self.prefix}noitu stop để dừng"
+                ))
+            else:
+                start = random.choice(["mặt trời", "học sinh", "cây xanh", "con người", "nước biển"])
+                _noitu_state[thread_id] = {"last_word": start, "used": {start}}
+                self._reply(snap, (
+                    f"🔗 NỐI TỪ BẮT ĐẦU!\n{DIVIDER}\n"
+                    f"  Bot: {start}\n"
+                    f"  Bạn phải dùng từ bắt đầu bằng chữ cuối của từ trên.\n"
+                    f"  Gõ {self.prefix}noitu <từ tiếp theo>"
+                ))
+            return
+
+        if inp == "stop":
+            _noitu_state.pop(thread_id, None)
+            self._reply(snap, "🔗 Đã dừng game Nối từ!")
+            return
+
+        if thread_id not in _noitu_state:
+            self._reply(snap, f"ℹ️ Chưa có game. Gõ {self.prefix}noitu để bắt đầu.")
+            return
+
+        state = _noitu_state[thread_id]
+        last  = state["last_word"]
+        used  = state["used"]
+
+        last_char = last.split()[-1][0]
+        first_char = inp.split()[0][0]
+
+        if first_char != last_char:
+            self._reply(snap, f"❌ Từ phải bắt đầu bằng '{last_char.upper()}'!\n  (Từ cuối của '{last}' là '{last_char}')")
+            return
+        if inp in used:
+            self._reply(snap, f"❌ Từ '{inp}' đã được dùng rồi!")
+            return
+
+        used.add(inp)
+        bot_candidates = [
+            w for w in ["sao trời","không gian","người lớn","nước mắt","mắt xanh","xanh lá",
+                        "lá cây","cây cao","cao nguyên","nguyên liệu","liệu pháp","pháp lý",
+                        "lý do","do thám","tháng năm","năm ngoái","ngoại lệ","lệnh cấm",
+                        "cấm đoán","đoán mò","mò cua","cua biển","biển xanh"]
+            if w.split()[0][0] == inp.split()[-1][-1] and w not in used
+        ]
+        if bot_candidates:
+            bot_word = random.choice(bot_candidates[:5])
+            used.add(bot_word)
+            state["last_word"] = bot_word
+            self._reply(snap, (
+                f"🔗 NỐI TỪ\n{DIVIDER}\n"
+                f"  Bạn: {inp}\n"
+                f"  Bot: {bot_word}\n"
+                f"  Đã dùng: {len(used)} từ  |  Gõ {self.prefix}noitu <từ>"
+            ))
+        else:
+            _noitu_state.pop(thread_id, None)
+            self._reply(snap, (
+                f"🏆 BOT THUA! Không tìm được từ tiếp theo.\n{DIVIDER}\n"
+                f"  Bạn thắng sau {len(used)} từ! 🎉"
+            ))
+
+    def _cmd_doanemoji(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        inp = arg.strip().lower()
+
+        if not inp:
+            emojis, answer = random.choice(_EMOJI_POOL)
+            _emoji_state[thread_id] = {"answer": answer, "emojis": emojis}
+            self._reply(snap, (
+                f"😀 ĐOÁN EMOJI\n{DIVIDER}\n"
+                f"  {emojis}\n\n"
+                f"  Gõ {self.prefix}doanemoji <đáp án>\n"
+                f"  Gợi ý: {len(answer)} ký tự"
+            ))
+            return
+
+        if inp == "skip" or inp == "bỏ qua":
+            if thread_id in _emoji_state:
+                ans = _emoji_state.pop(thread_id)["answer"]
+                self._reply(snap, f"⏭️ Đáp án là: {ans.upper()}")
+            else:
+                self._reply(snap, f"ℹ️ Chưa có câu đố. Gõ {self.prefix}doanemoji để chơi.")
+            return
+
+        if thread_id not in _emoji_state:
+            self._reply(snap, f"ℹ️ Chưa có câu đố. Gõ {self.prefix}doanemoji để chơi.")
+            return
+
+        state = _emoji_state[thread_id]
+        answer = state["answer"]
+
+        if inp == answer or inp.replace(" ", "") == answer.replace(" ", ""):
+            del _emoji_state[thread_id]
+            self._reply(snap, f"🎉 ĐÚNG RỒI! Đáp án là: {answer.upper()} 🏆")
+        else:
+            hint = answer[0] + "_" * (len(answer) - 1)
+            self._reply(snap, f"❌ Sai! Thử lại.\n  Gợi ý: {hint}  |  {state['emojis']}")
+
+    def _cmd_speedquiz(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        inp = arg.strip().lower()
+
+        if not inp:
+            q, a = random.choice(_SPEEDQUIZ_POOL)
+            _speedquiz_state[thread_id] = {"answer": a, "ts": time.time(), "question": q}
+            self._reply(snap, (
+                f"⚡ SPEED QUIZ\n{DIVIDER}\n"
+                f"  ❓ {q}\n\n"
+                f"  Gõ {self.prefix}speedquiz <đáp án>\n"
+                f"  ⏱️ Càng nhanh điểm càng cao!"
+            ))
+            def expire():
+                time.sleep(30)
+                if thread_id in _speedquiz_state and _speedquiz_state[thread_id].get("question") == q:
+                    del _speedquiz_state[thread_id]
+                    self._reply(snap, f"⏰ Hết giờ! Đáp án là: {a.upper()}")
+            threading.Thread(target=expire, daemon=True).start()
+            return
+
+        if thread_id not in _speedquiz_state:
+            self._reply(snap, f"ℹ️ Chưa có câu hỏi. Gõ {self.prefix}speedquiz để bắt đầu.")
+            return
+
+        state = _speedquiz_state[thread_id]
+        elapsed = time.time() - state["ts"]
+        answer  = state["answer"]
+
+        if inp == answer or inp.replace(" ", "") == answer.replace(" ", ""):
+            del _speedquiz_state[thread_id]
+            if elapsed < 5:
+                speed_tag = "⚡ SIÊU NHANH!"
+            elif elapsed < 10:
+                speed_tag = "🚀 Nhanh!"
+            elif elapsed < 20:
+                speed_tag = "👍 Tốt!"
+            else:
+                speed_tag = "⏱️ Chậm một chút"
+            self._reply(snap, (
+                f"🎉 ĐÚNG! {speed_tag}\n{DIVIDER}\n"
+                f"  Đáp án: {answer.upper()}\n"
+                f"  Thời gian: {elapsed:.1f}s"
+            ))
+        else:
+            self._reply(snap, f"❌ Sai! Gõ {self.prefix}speedquiz <đáp án> để thử lại.")
+
+    def _cmd_typing(self, snap: dict, arg: str) -> None:
+        thread_id = str(snap["replyToID"])
+        inp = arg.strip()
+
+        if not inp:
+            sentence = random.choice(_TYPING_SENTENCES)
+            _typing_state[thread_id] = {"sentence": sentence, "ts": time.time()}
+            self._reply(snap, (
+                f"⌨️ TYPING RACE\n{DIVIDER}\n"
+                f"  Gõ lại câu sau càng nhanh càng tốt:\n\n"
+                f"  📝 {sentence}\n\n"
+                f"  Gõ {self.prefix}typing <câu> để nộp bài!"
+            ))
+            def expire():
+                time.sleep(60)
+                if thread_id in _typing_state and _typing_state[thread_id].get("sentence") == sentence:
+                    del _typing_state[thread_id]
+            threading.Thread(target=expire, daemon=True).start()
+            return
+
+        if thread_id not in _typing_state:
+            self._reply(snap, f"ℹ️ Chưa có câu. Gõ {self.prefix}typing để bắt đầu.")
+            return
+
+        state    = _typing_state[thread_id]
+        sentence = state["sentence"]
+        elapsed  = time.time() - state["ts"]
+        del _typing_state[thread_id]
+
+        inp_norm = " ".join(inp.lower().split())
+        tgt_norm = " ".join(sentence.lower().split())
+
+        correct_chars = sum(a == b for a, b in zip(inp_norm, tgt_norm))
+        accuracy = int(correct_chars / max(len(tgt_norm), 1) * 100)
+        words = len(sentence.split())
+        wpm   = int(words / (elapsed / 60)) if elapsed > 0 else 0
+
+        if accuracy >= 95:
+            grade = "🏆 XUẤT SẮC!"
+        elif accuracy >= 80:
+            grade = "✅ Tốt!"
+        elif accuracy >= 60:
+            grade = "👍 Khá!"
+        else:
+            grade = "💪 Cần luyện thêm"
+
+        self._reply(snap, (
+            f"⌨️ KẾT QUẢ TYPING RACE\n{DIVIDER}\n"
+            f"  ⏱️ Thời gian : {elapsed:.1f}s\n"
+            f"  📊 Độ chính xác: {accuracy}%\n"
+            f"  🚀 Tốc độ   : {wpm} WPM\n"
+            f"  {grade}"
         ))
 
     # ══════════════════════════════════════════════════════
