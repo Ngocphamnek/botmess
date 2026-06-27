@@ -3954,9 +3954,113 @@ class GroupBot:
 
     def _cmd_nhac(self, snap: dict, arg: str) -> None:
         if not arg:
-            self._reply(snap, f"ℹ️ Cách dùng: {self.prefix}nhac <tên bài hát>")
+            self._reply(snap, (
+                f"ℹ️ Cách dùng:\n"
+                f"  {self.prefix}nhac <tên bài>  — tải + gửi audio vào chat\n"
+                f"  {self.prefix}nhac link <tên>  — chỉ gửi link YouTube"
+            ))
             return
-        self._youtube_search(snap, arg + " official audio", kind="nhạc")
+
+        # Chế độ chỉ gửi link (nhanh hơn)
+        if arg.lower().startswith("link "):
+            self._youtube_search(snap, arg[5:].strip() + " official audio", kind="nhạc")
+            return
+
+        # Chế độ tải và gửi file audio
+        def _download_and_send():
+            import yt_dlp as _ytdlp, glob as _glob
+            thread_id = str(snap["replyToID"])
+            tmp_dir   = self._TMP_DIR
+            os.makedirs(tmp_dir, exist_ok=True)
+            self._reply(snap, f"🎵 Đang tải: '{arg}'\n⏳ Vui lòng chờ 10–30 giây...")
+
+            safe_name = re.sub(r"[^\w\s-]", "", arg)[:40].strip().replace(" ", "_")
+            out_tpl   = os.path.join(tmp_dir, f"nhac_{safe_name}_%(id)s.%(ext)s")
+
+            ydl_opts = {
+                "format":           "bestaudio[ext=m4a]/bestaudio/best",
+                "outtmpl":          out_tpl,
+                "quiet":            True,
+                "noplaylist":       True,
+                "default_search":   "ytsearch1",
+                "max_filesize":     25 * 1024 * 1024,   # giới hạn 25 MB
+                "postprocessors": [{
+                    "key":            "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "128",
+                }],
+                "ffmpeg_location": "/nix/store/k28ypnisbhajg3x1kv5hy7h2vjbajkvy-replit-runtime-path/bin",
+            }
+
+            try:
+                with _ytdlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(arg, download=True)
+                    title   = info.get("title", arg)
+                    channel = info.get("uploader", "")
+                    dur_sec = info.get("duration", 0)
+                    mins, secs = divmod(int(dur_sec), 60)
+                    vid_id  = info.get("id", "")
+                    yt_link = f"https://youtu.be/{vid_id}" if vid_id else ""
+            except Exception as e:
+                self._reply(snap, (
+                    f"❌ Tải nhạc thất bại: {str(e)[:80]}\n"
+                    f"  Thử: {self.prefix}nhac link {arg}"
+                ))
+                return
+
+            # Tìm file vừa tải về
+            pattern  = os.path.join(tmp_dir, f"nhac_{safe_name}_*.mp3")
+            files    = _glob.glob(pattern)
+            if not files:
+                # fallback: tìm bất kỳ file nhạc mới trong tmp
+                files = sorted(
+                    _glob.glob(os.path.join(tmp_dir, "nhac_*.mp3")),
+                    key=os.path.getmtime, reverse=True
+                )[:1]
+
+            if not files:
+                self._reply(snap, f"❌ Không tìm thấy file nhạc sau khi tải. Thử lại sau!")
+                return
+
+            mp3_path = files[0]
+            file_mb  = os.path.getsize(mp3_path) / 1024 / 1024
+
+            try:
+                upload_result = upload_attachment([mp3_path], self.dataFB)
+            except Exception as ue:
+                self._reply(snap, f"❌ Upload thất bại: {str(ue)[:80]}")
+                try: os.unlink(mp3_path)
+                except: pass
+                return
+
+            if not upload_result or not upload_result.get("attachmentID"):
+                self._reply(snap, (
+                    f"❌ Upload lên Facebook thất bại.\n"
+                    f"  🔗 Link YouTube: {yt_link}"
+                ))
+                try: os.unlink(mp3_path)
+                except: pass
+                return
+
+            attach_id = upload_result["attachmentID"]
+            result = send_group_ls_image(
+                self.dataFB, thread_id, attach_id,
+                caption=(
+                    f"🎵 {title}\n"
+                    f"👤 {channel}  ⏱️ {mins}:{secs:02d}\n"
+                    f"📦 {file_mb:.1f} MB  {yt_link}"
+                )
+            )
+            try: os.unlink(mp3_path)
+            except: pass
+
+            if not (isinstance(result, dict) and result.get("success") == 1):
+                self._reply(snap, (
+                    f"🎵 {title}\n"
+                    f"  ❌ Gửi file thất bại, đây là link:\n  {yt_link}"
+                ))
+
+        threading.Thread(target=_download_and_send, daemon=True).start()
 
     def _cmd_youtube(self, snap: dict, arg: str) -> None:
         if not arg:
