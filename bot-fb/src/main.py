@@ -141,9 +141,59 @@ from ff_checker import check_ff, format_profile, normalize_region
 from lq_checker import check_lq, format_lq_profile, format_lq_results, normalize_server, search_lq_by_nickname
 
 
-CONFIG_PATH = HERE / "config.json"
-KEYS_PATH   = HERE / "keys.json"
+CONFIG_PATH  = HERE / "config.json"
+KEYS_PATH    = HERE / "keys.json"
+PLAYER_PATH  = HERE / "players.json"
 BOT_START_TIME = time.time()
+
+# ─── PLAYER DATA (Level / EXP / Coin / Daily) ────────────────────
+_EXP_PER_MSG   = 2          # EXP mỗi tin nhắn
+_EXP_PER_LEVEL = 100        # EXP cần để lên 1 level
+_COIN_PER_MSG  = 1          # Coin mỗi tin nhắn
+_DAILY_EXP     = 50         # EXP thưởng điểm danh
+_DAILY_COIN    = 100        # Coin thưởng điểm danh
+
+def _load_players() -> dict:
+    if PLAYER_PATH.exists():
+        try:
+            return json.loads(PLAYER_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _save_players(data: dict) -> None:
+    PLAYER_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _get_player(uid: str) -> dict:
+    players = _load_players()
+    if uid not in players:
+        players[uid] = {"exp": 0, "level": 1, "coin": 0, "daily": 0, "msg_total": 0}
+        _save_players(players)
+    p = players[uid]
+    p.setdefault("exp", 0); p.setdefault("level", 1)
+    p.setdefault("coin", 0); p.setdefault("daily", 0)
+    p.setdefault("msg_total", 0)
+    return p
+
+def _award_exp(uid: str, exp: int = _EXP_PER_MSG, coin: int = _COIN_PER_MSG) -> tuple[bool, int]:
+    """Cộng EXP+Coin cho user. Trả về (leveled_up, new_level)."""
+    players = _load_players()
+    p = players.setdefault(uid, {"exp": 0, "level": 1, "coin": 0, "daily": 0, "msg_total": 0})
+    p.setdefault("exp", 0); p.setdefault("level", 1)
+    p.setdefault("coin", 0); p.setdefault("daily", 0)
+    p.setdefault("msg_total", 0)
+    p["exp"]       += exp
+    p["coin"]      += coin
+    p["msg_total"] += 1
+    leveled_up = False
+    while p["exp"] >= p["level"] * _EXP_PER_LEVEL:
+        p["exp"]  -= p["level"] * _EXP_PER_LEVEL
+        p["level"] += 1
+        p["coin"]  += p["level"] * 10
+        leveled_up = True
+    players[uid] = p
+    _save_players(players)
+    return leveled_up, p["level"]
 
 # ─── KEY SYSTEM ───────────────────────────────────────────────────
 def load_keys() -> dict:
@@ -561,6 +611,7 @@ class GroupBot:
             "blacklist", "whitelist",
             "daten", "thongtinnhom", "chunhom", "chuyennhom",
             "rules", "stats", "topchat", "hoatdong",
+            "profile", "toplevel", "topcoin", "daily",
             "spam", "react", "unsend",
             "sendrules", "slowmode", "badword", "autokick", "schedule", "welcome",
         }
@@ -628,6 +679,10 @@ class GroupBot:
             "unban":            self._cmd_unban,
             "banlist":          self._cmd_banlist,
             "stats":            self._cmd_stats,
+            "profile":          self._cmd_profile,
+            "toplevel":         self._cmd_toplevel,
+            "topcoin":          self._cmd_topcoin,
+            "daily":            self._cmd_daily,
             "topwarn":          self._cmd_topwarn,
             "topchat":          self._cmd_topchat,
             "hoatdong":         self._cmd_hoatdong,
@@ -1059,6 +1114,18 @@ class GroupBot:
             first = self._activity_first.setdefault(thread_id, {})
             if sender_id not in first:
                 first[sender_id] = time.time()
+            # ── Cộng EXP / Coin mỗi tin nhắn ──────────────────────
+            leveled_up, new_lv = _award_exp(sender_id)
+            if leveled_up:
+                try:
+                    self.sender.send(self.dataFB,
+                        f"🎉 LEVEL UP!\n{'═'*30}\n"
+                        f"  @{sender_id} vừa lên Level {new_lv}! 🚀\n"
+                        f"  Thưởng: +{new_lv * 10} coin 🪙",
+                        thread_id
+                    )
+                except Exception:
+                    pass
 
         # ── Lần đầu bot xuất hiện trong nhóm → gửi tin chào ──────
         is_group = snap.get("type") != "user"
@@ -1597,6 +1664,7 @@ class GroupBot:
         ("1️⃣",  "📋 Công cộng (DM+Nhóm)",  ["ping","id","info","uptime","nhapkey","muakey","checkkey","nhom","giahan"]),
         ("2️⃣",  "🤖 AI Chat (DM+Nhóm)",    ["ai","gpt","ask"]),
         ("3️⃣",  "🎮 Vui chơi (DM+Nhóm)",   ["tung","random","roll","choose","8ball","trivia","rps","hangman","noitu","doanemoji","speedquiz","typing"]),
+        ("🪙",  "📊 Hồ sơ & BXH (DM+Nhóm)", ["profile","toplevel","topcoin","daily"]),
         ("4️⃣",  "🌤 Tiện ích (DM+Nhóm)",   ["thoitiet","dich","tinhtoan","wiki","qr","base64","decode64","hash"]),
         ("5️⃣",  "🖼 Ảnh & Nhạc (DM+Nhóm)", ["genanh","anh","meme","avatar","nhac","youtube","videoinfo","lyric"]),
         ("6️⃣",  "🎮 Game (DM+Nhóm)",  ["ff", "lq"]),
@@ -4133,6 +4201,108 @@ class GroupBot:
             f"  {bar}\n"
             f"{'═' * 30}\n"
             f"  💡 /topchat — xem BXH cả nhóm"
+        ))
+
+    # ══════════════════════════════════════════════════════
+    # 🪙 LEVEL / EXP / COIN / DAILY
+    # ══════════════════════════════════════════════════════
+
+    def _cmd_profile(self, snap: dict, arg: str) -> None:
+        sender_id = str(snap.get("userID", ""))
+        target    = arg.strip() if arg.strip().isdigit() else sender_id
+        p = _get_player(target)
+        lv   = p["level"]
+        exp  = p["exp"]
+        need = lv * _EXP_PER_LEVEL
+        bar_filled = int(exp / need * 10) if need else 0
+        bar = "🟩" * bar_filled + "⬜" * (10 - bar_filled)
+        name = self._get_display_name(target)
+        self._reply(snap, (
+            f"👤 HỒ SƠ: {name}\n{DIVIDER}\n"
+            f"  🏅 Level    : {lv}\n"
+            f"  ✨ EXP      : {exp} / {need}\n"
+            f"  {bar}\n"
+            f"  🪙 Coin     : {p['coin']:,}\n"
+            f"  💬 Tin nhắn : {p['msg_total']:,}\n"
+            f"{DIVIDER}\n"
+            f"  💡 /daily — điểm danh nhận thưởng"
+        ))
+
+    def _cmd_toplevel(self, snap: dict, arg: str) -> None:
+        players = _load_players()
+        if not players:
+            self._reply(snap, "📊 Chưa có dữ liệu người chơi!"); return
+        try:
+            limit = max(1, min(int(arg.strip()), 20)) if arg.strip().isdigit() else 10
+        except Exception:
+            limit = 10
+        top = sorted(players.items(), key=lambda x: (-x[1].get("level", 1), -x[1].get("exp", 0)))[:limit]
+        medals = ["🥇","🥈","🥉"] + [f"{i}." for i in range(4, 21)]
+        lines = [f"🏅 TOP {limit} LEVEL CAO NHẤT\n{DIVIDER}"]
+        for i, (uid, p) in enumerate(top):
+            medal = medals[i] if i < len(medals) else f"{i+1}."
+            name  = self._get_display_name(uid)
+            lines.append(f"  {medal} {name}  —  Lv.{p.get('level',1)}  ({p.get('exp',0)} EXP)")
+        lines.append(f"{DIVIDER}\n  💡 /profile — xem hồ sơ của bạn")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_topcoin(self, snap: dict, arg: str) -> None:
+        players = _load_players()
+        if not players:
+            self._reply(snap, "📊 Chưa có dữ liệu người chơi!"); return
+        try:
+            limit = max(1, min(int(arg.strip()), 20)) if arg.strip().isdigit() else 10
+        except Exception:
+            limit = 10
+        top = sorted(players.items(), key=lambda x: -x[1].get("coin", 0))[:limit]
+        medals = ["🥇","🥈","🥉"] + [f"{i}." for i in range(4, 21)]
+        lines = [f"🪙 TOP {limit} COIN NHIỀU NHẤT\n{DIVIDER}"]
+        for i, (uid, p) in enumerate(top):
+            medal = medals[i] if i < len(medals) else f"{i+1}."
+            name  = self._get_display_name(uid)
+            lines.append(f"  {medal} {name}  —  {p.get('coin',0):,} 🪙  (Lv.{p.get('level',1)})")
+        lines.append(f"{DIVIDER}\n  💡 /daily — điểm danh nhận coin miễn phí")
+        self._reply(snap, "\n".join(lines))
+
+    def _cmd_daily(self, snap: dict, arg: str) -> None:
+        sender_id = str(snap.get("userID", ""))
+        if not sender_id:
+            self._reply(snap, "❌ Không xác định được UID!"); return
+        players = _load_players()
+        p = players.setdefault(sender_id, {"exp": 0, "level": 1, "coin": 0, "daily": 0, "msg_total": 0})
+        p.setdefault("exp", 0); p.setdefault("level", 1)
+        p.setdefault("coin", 0); p.setdefault("daily", 0)
+        p.setdefault("msg_total", 0)
+        today = datetime.now().strftime("%Y-%m-%d")
+        last  = p.get("daily_date", "")
+        if last == today:
+            self._reply(snap, (
+                f"📅 ĐIỂM DANH\n{DIVIDER}\n"
+                f"  Bạn đã điểm danh hôm nay rồi!\n"
+                f"  🪙 Coin: {p['coin']:,}  |  🏅 Lv.{p['level']}\n"
+                f"  ⏳ Quay lại vào ngày mai nhé!"
+            ))
+            return
+        p["exp"]        += _DAILY_EXP
+        p["coin"]       += _DAILY_COIN
+        p["daily"]      = p.get("daily", 0) + 1
+        p["daily_date"] = today
+        streak = p["daily"]
+        leveled_up = False
+        while p["exp"] >= p["level"] * _EXP_PER_LEVEL:
+            p["exp"]  -= p["level"] * _EXP_PER_LEVEL
+            p["level"] += 1
+            p["coin"]  += p["level"] * 10
+            leveled_up = True
+        players[sender_id] = p
+        _save_players(players)
+        bonus = f"\n  🎉 LEVEL UP! Bạn lên Level {p['level']}!" if leveled_up else ""
+        self._reply(snap, (
+            f"📅 ĐIỂM DANH THÀNH CÔNG!\n{DIVIDER}\n"
+            f"  +{_DAILY_EXP} EXP  |  +{_DAILY_COIN} 🪙 Coin\n"
+            f"  🔥 Chuỗi: {streak} ngày liên tiếp\n"
+            f"  🏅 Level: {p['level']}  |  🪙 Tổng: {p['coin']:,} coin"
+            f"{bonus}"
         ))
 
     # ══════════════════════════════════════════════════════
